@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- Package Information -->
+    <PackageId>QwkNet</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Agent 57951</Authors>
+    <Product>QWK.NET</Product>
+    <Description>A modern, dependency-minimal .NET library for reading and writing QWK, REP, and QWKE offline mail packet formats.</Description>
+    <Copyright>Copyright © 2025 Agent 57951</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/57951/QwkNet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/57951/QwkNet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>qwk;qwke;rep;bbs;offline-mail;fidonet;echomail;retrocomputing;retro;archival</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes>Initial release with QWK, REP, and QWKE packet support.</PackageReleaseNotes>
+
+    <!-- Optional: Icon -->
+    <PackageIcon>icon.png</PackageIcon>
+
+    <!-- Repository Information -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <!-- Suppress NU1510 false positive - System.Text.Encoding.CodePages IS required for CP437 support -->
+    <NoWarn>$(NoWarn);NU1510</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- CP437 encoding support for QWK format compatibility -->
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.0" />
+  </ItemGroup>
+
+<!-- Include README in package -->
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="LICENSE" Pack="true" PackagePath="\" />
+    <!-- Optional: Include icon -->
+    <None Include="icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <!-- Core dependencies limited to System.IO.Compression (ZIP) and System.Text.Encoding.CodePages (CP437) -->
+</Project>
