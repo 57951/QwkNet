@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Authors>QWK.NET Contributors</Authors>
+    <Description>TAR archive format extension for QWK.NET - demonstrates third-party extension capabilities</Description>
+    <Copyright>Copyright © 2025 QWK.NET Contributors</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/57951/QwkNet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/57951/QwkNet</RepositoryUrl>
+    <PackageTags>qwk;bbs;archive;tar;extension</PackageTags>
+    <Version>1.0.0</Version>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reference to core QwkNet library -->
+    <ProjectReference Include="..\QwkNet\QwkNet.csproj" />
+  </ItemGroup>
+
+  <!-- 
+    System.Formats.Tar is included in .NET 10 runtime.
+    No package reference needed!
+  -->
+
+</Project>

@@ -1,0 +1,48 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QwkNet", "src\QwkNet\QwkNet.csproj", "{2A8B5C3D-4E6F-7A9B-1C2D-3E4F5A6B7C8D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QwkNet.Tests", "tests\QwkNet.Tests\QwkNet.Tests.csproj", "{3B9C6D4E-5F7A-8BAC-2D3E-4F5A6B7C8D9E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QwkNet.Diagnostics", "tools\QwkNet.Diagnostics\QwkNet.Diagnostics.csproj", "{4C0D7E5F-6A8B-9CBD-3E4F-5A6B7C8D9E0F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QwkNet.Benchmarking", "tools\QwkNet.Benchmarking\QwkNet.Benchmarking.csproj", "{5D1E8F6A-7B9C-0DCE-4F5A-6B7C8D9E0F1A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QwkNet.Archives.Tar", "src\QwkNet.Archives.Tar\QwkNet.Archives.Tar.csproj", "{6E2F9A7B-8C0D-1EDF-5A6B-7C8D9E0F1A2B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QwkNet.Archives.Tests", "tests\QwkNet.Archives.Tests\QwkNet.Archives.Tests.csproj", "{7F3A0B8C-9D1E-2FEA-6B7C-8D9E0F1A2B3C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2A8B5C3D-4E6F-7A9B-1C2D-3E4F5A6B7C8D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2A8B5C3D-4E6F-7A9B-1C2D-3E4F5A6B7C8D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2A8B5C3D-4E6F-7A9B-1C2D-3E4F5A6B7C8D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2A8B5C3D-4E6F-7A9B-1C2D-3E4F5A6B7C8D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3B9C6D4E-5F7A-8BAC-2D3E-4F5A6B7C8D9E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3B9C6D4E-5F7A-8BAC-2D3E-4F5A6B7C8D9E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3B9C6D4E-5F7A-8BAC-2D3E-4F5A6B7C8D9E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3B9C6D4E-5F7A-8BAC-2D3E-4F5A6B7C8D9E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4C0D7E5F-6A8B-9CBD-3E4F-5A6B7C8D9E0F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C0D7E5F-6A8B-9CBD-3E4F-5A6B7C8D9E0F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C0D7E5F-6A8B-9CBD-3E4F-5A6B7C8D9E0F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C0D7E5F-6A8B-9CBD-3E4F-5A6B7C8D9E0F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5D1E8F6A-7B9C-0DCE-4F5A-6B7C8D9E0F1A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5D1E8F6A-7B9C-0DCE-4F5A-6B7C8D9E0F1A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5D1E8F6A-7B9C-0DCE-4F5A-6B7C8D9E0F1A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5D1E8F6A-7B9C-0DCE-4F5A-6B7C8D9E0F1A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6E2F9A7B-8C0D-1EDF-5A6B-7C8D9E0F1A2B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6E2F9A7B-8C0D-1EDF-5A6B-7C8D9E0F1A2B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6E2F9A7B-8C0D-1EDF-5A6B-7C8D9E0F1A2B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6E2F9A7B-8C0D-1EDF-5A6B-7C8D9E0F1A2B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7F3A0B8C-9D1E-2FEA-6B7C-8D9E0F1A2B3C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7F3A0B8C-9D1E-2FEA-6B7C-8D9E0F1A2B3C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7F3A0B8C-9D1E-2FEA-6B7C-8D9E0F1A2B3C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7F3A0B8C-9D1E-2FEA-6B7C-8D9E0F1A2B3C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

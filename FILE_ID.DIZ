@@ -1,0 +1,20 @@
+      .-')      (`\ .-') /`.-. .-')         .-') _   ('-.   .-') _    
+   .(  OO)      `.( OO ),'\  ( OO )       ( OO ) )_(  OO) (  OO) )   
+  (_)---\_)  ,--./  .--.  ,--. ,--.   ,--./ ,--,'(,------./     '._  
+  '  .-.  '  |      |  |  |  .'   /   |   \ |  |\ |  .---'|'--...__) 
+ ,|  | |  |  |  |   |  |, |      /,   |    \|  | )|  |    '--.  .--' 
+(_|  | |  |  |  |.'.|  |_)|     ' _)  |  .     |/(|  '--.    |  |    
+  |  | |  |  |         |  |  .   \    |  |\    |  |  .--'    |  |    
+  '  '-'  '-.|   ,'.   |  |  |\   \.-.|  | \   |  |  `---.   |  |    
+   `-----'--''--'   '--'  `--' '--'`-'`--'  `--'  `------'   `--'    
+                               
+QWK.NET
+                               
+A .NET library for reading and writing QWK, REP, and QWKE
+offline mail packets used by BBS systems.
+
+Provides byte-accurate parsing and generation of packet files.
+Supports CP437 encoding and ZIP archive handling.
+
+Zero external dependencies.
+.NET 10 compatible.
