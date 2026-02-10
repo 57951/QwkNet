@@ -439,6 +439,46 @@ public sealed class QwkPacket : IDisposable
     return true;
   }
 
+  /// <summary>
+  /// Reads exactly <see cref="BinaryRecordReader.RecordSize"/> (128) bytes from the stream,
+  /// looping until the buffer is full or the stream is exhausted.
+  /// </summary>
+  /// <remarks>
+  /// <para>
+  /// A single call to <see cref="Stream.Read(byte[], int, int)"/> is not guaranteed to return the requested
+  /// number of bytes, even when more data is available. This is true of any stream, but is
+  /// particularly common with <see cref="System.IO.Compression.DeflateStream"/>, which backs
+  /// every <see cref="System.IO.Compression.ZipArchiveEntry"/> opened for reading.
+  /// </para>
+  /// <para>
+  /// Relying on a single Read() call for fixed-size 128-byte QWK records causes incorrect
+  /// short-read detection: the caller sees e.g. 64 bytes returned, interprets it as a
+  /// truncated block, emits a warning, and breaks out of the body-block loop — leaving the
+  /// remaining bytes in the stream and causing every subsequent message to be misaligned.
+  /// </para>
+  /// </remarks>
+  /// <param name="stream">The stream to read from.</param>
+  /// <param name="buffer">The 128-byte buffer to fill.</param>
+  /// <returns>
+  /// The total number of bytes read. Returns 0 only at the true end of stream.
+  /// Returns 1–127 only if the stream ended mid-block (genuinely truncated data).
+  /// Returns 128 on full success.
+  /// </returns>
+  private static int ReadBlock(Stream stream, byte[] buffer)
+  {
+    int totalRead = 0;
+    while (totalRead < BinaryRecordReader.RecordSize)
+    {
+      int bytesRead = stream.Read(buffer, totalRead, BinaryRecordReader.RecordSize - totalRead);
+      if (bytesRead == 0)
+      {
+        break; // True end of stream
+      }
+      totalRead += bytesRead;
+    }
+    return totalRead;
+  }
+
   private static List<Message> ParseMessages(IArchiveReader archive, ValidationContext context, ValidationMode mode, int? maxMessageSizeMB = 16)
   {
     List<Message> messages = new List<Message>();
@@ -453,42 +493,45 @@ public sealed class QwkPacket : IDisposable
     {
       using Stream stream = archive.OpenFile("MESSAGES.DAT");
 
-      // Skip first 128-byte copyright record
-      byte[] copyrightBlock = new byte[128];
-      int copyrightRead = stream.Read(copyrightBlock, 0, 128);
-      if (copyrightRead < 128)
+      // Skip first 128-byte copyright record.
+      // Use ReadBlock() — DeflateStream.Read() may return fewer bytes than requested
+      // even mid-stream, so a single Read() call is not sufficient.
+      byte[] copyrightBlock = new byte[BinaryRecordReader.RecordSize];
+      int copyrightRead = ReadBlock(stream, copyrightBlock);
+      if (copyrightRead < BinaryRecordReader.RecordSize)
       {
         context.AddWarning("MESSAGES.DAT is too small (missing copyright block).");
         return messages;
       }
 
-      // Read messages until stream exhausted
       int messageNumber = 1;
 
       while (true)
       {
-        // Read 128-byte header
-        byte[] headerBytes = new byte[128];
-        int headerRead = stream.Read(headerBytes, 0, 128);
+        // Step 1: Read header block.
+        // ReadBlock() loops internally until 128 bytes are read or EOF is reached,
+        // preventing DeflateStream short-reads from being misinterpreted as truncation.
+        byte[] headerBytes = new byte[BinaryRecordReader.RecordSize];
+        int headerRead = ReadBlock(stream, headerBytes);
 
         if (headerRead == 0)
         {
-          break; // End of stream
+          break; // Clean end of stream
         }
 
-        if (headerRead < 128)
+        if (headerRead < BinaryRecordReader.RecordSize)
         {
           context.AddWarning($"Message {messageNumber}: Incomplete header block ({headerRead} bytes).");
           break;
         }
 
-        // Validate header structure before attempting to parse
-        // This prevents body blocks from being misinterpreted as message headers
+        // Step 2: Validate header structure before attempting to parse.
+        // This guards against body blocks being mistaken for headers when
+        // stream alignment is lost.
         if (!IsPlausibleMessageHeader(headerBytes))
         {
           long estimatedOffset = 128 + ((long)(messageNumber - 1) * 128);
 
-          // Determine which delimiter type was found (if any) for diagnostics
           byte delim1 = headerBytes[10];
           byte delim2 = headerBytes[13];
           bool hasDateDelimiters =
@@ -503,115 +546,134 @@ public sealed class QwkPacket : IDisposable
             $"Time colon: {headerBytes[18] == (byte)':'}, " +
             $"Alive flag: 0x{headerBytes[122]:X2}");
 
-          // Skip this invalid block and continue to next block
-          // In lenient/salvage mode, we attempt to recover by continuing
           continue;
         }
 
+        // Step 3: Parse the header record.
+        // Isolated in its own try/catch: if this throws, the stream is still aligned
+        // (we have only consumed the 128-byte header block) so continuing is safe.
+        QwkMessageHeader header;
         try
         {
-          QwkMessageHeader header = QwkMessageHeader.Parse(headerBytes);
+          header = QwkMessageHeader.Parse(headerBytes);
+        }
+        catch (Exception ex)
+        {
+          context.AddWarning($"Failed to parse header for message {messageNumber}: {ex.Message}");
+          messageNumber++;
+          continue; // Stream still aligned - header block already consumed
+        }
 
-          // Parse block count (number of 128-byte body blocks, header is block 1)
-          int totalBlocks = header.BlockCount;
-          int bodyBlockCount = Math.Max(0, totalBlocks - 1);
+        // Step 4: Validate block count and determine how many body blocks to read.
+        // Use a flag rather than an early continue, so that body blocks are always
+        // consumed before we decide whether to skip the message.
+        int totalBlocks = header.BlockCount;
+        int bodyBlockCount = Math.Max(0, totalBlocks - 1);
+        bool skipMessage = false;
 
-          // Validate block count against maximum message size to prevent decompression bomb attacks
-          if (maxMessageSizeMB.HasValue)
+        if (maxMessageSizeMB.HasValue)
+        {
+          long maxBytes = maxMessageSizeMB.Value * 1024L * 1024L;
+          long maxBlocks = maxBytes / 128L;
+          long messageBytes = totalBlocks * 128L;
+
+          if (totalBlocks > maxBlocks)
           {
-            long maxBytes = maxMessageSizeMB.Value * 1024L * 1024L;
-            long maxBlocks = maxBytes / 128L;
-            long messageBytes = totalBlocks * 128L;
+            double messageSizeMB = messageBytes / (1024.0 * 1024.0);
+            string error = $"Message {messageNumber}: Block count {totalBlocks} exceeds maximum ({maxBlocks} blocks, {maxMessageSizeMB}MB). Message size: {messageSizeMB:F2}MB.";
 
-            if (totalBlocks > maxBlocks)
+            if (mode == ValidationMode.Strict)
             {
-              double messageSizeMB = messageBytes / (1024.0 * 1024.0);
-              string error = $"Message {messageNumber}: Block count {totalBlocks} exceeds maximum ({maxBlocks} blocks, {maxMessageSizeMB}MB). Message size: {messageSizeMB:F2}MB.";
+              throw new QwkFormatException(error);
+            }
+
+            context.AddWarning(error);
+            skipMessage = true; // Body blocks must still be consumed below
+          }
+
+          if (!skipMessage && stream.CanSeek)
+          {
+            long remainingBytes = stream.Length - stream.Position;
+            if (messageBytes > remainingBytes)
+            {
+              string error = $"Message {messageNumber}: Block count {totalBlocks} exceeds remaining stream bytes ({remainingBytes} bytes).";
+              context.AddWarning(error);
 
               if (mode == ValidationMode.Strict)
               {
                 throw new QwkFormatException(error);
               }
 
-              context.AddWarning(error);
-              // Skip this message in lenient/salvage mode
-              messageNumber++;
-              continue;
-            }
-
-            // Also validate against remaining stream bytes if stream is seekable
-            if (stream.CanSeek)
-            {
-              long remainingBytes = stream.Length - stream.Position;
-              if (messageBytes > remainingBytes)
-              {
-                string error = $"Message {messageNumber}: Block count {totalBlocks} exceeds remaining stream bytes ({remainingBytes} bytes).";
-                context.AddWarning(error);
-
-                if (mode == ValidationMode.Strict)
-                {
-                  throw new QwkFormatException(error);
-                }
-
-                // Skip this message in lenient/salvage mode
-                messageNumber++;
-                continue;
-              }
+              skipMessage = true; // Body blocks must still be consumed below
             }
           }
+        }
 
-          // Read message body blocks
-          List<byte[]> bodyBlocks = new List<byte[]>();
-          for (int i = 0; i < bodyBlockCount; i++)
+        // Step 5: Read body blocks.
+        // CRITICAL: this loop runs unconditionally — even when skipMessage is true.
+        // The stream must advance past every body block belonging to this message
+        // before the next iteration can read the next message header correctly.
+        // Failure to do so (an early continue above this point) is what previously
+        // caused all messages after the first skipped one to be silently lost.
+        List<byte[]> bodyBlocks = new List<byte[]>();
+        for (int i = 0; i < bodyBlockCount; i++)
+        {
+          byte[] block = new byte[BinaryRecordReader.RecordSize];
+          int blockRead = ReadBlock(stream, block);
+
+          if (blockRead == 0)
           {
-            byte[] block = new byte[128];
-            int blockRead = stream.Read(block, 0, 128);
-
-            if (blockRead == 0)
-            {
-              context.AddWarning($"Message {messageNumber}: Missing body block {i + 1}/{bodyBlockCount}.");
-              break;
-            }
-
-            if (blockRead < 128)
-            {
-              context.AddWarning($"Message {messageNumber}: Incomplete body block {i + 1}/{bodyBlockCount} ({blockRead} bytes).");
-              break;
-            }
-
-            bodyBlocks.Add(block);
+            context.AddWarning($"Message {messageNumber}: Missing body block {i + 1}/{bodyBlockCount}.");
+            break;
           }
 
-          // Parse body lines using MessageBodyParser
+          if (blockRead < BinaryRecordReader.RecordSize)
+          {
+            context.AddWarning($"Message {messageNumber}: Incomplete body block {i + 1}/{bodyBlockCount} ({blockRead} bytes).");
+            // Pad the incomplete block so callers always receive a full 128-byte buffer
+            byte[] paddedBlock = new byte[BinaryRecordReader.RecordSize];
+            Array.Copy(block, paddedBlock, blockRead);
+            bodyBlocks.Add(paddedBlock);
+            break;
+          }
+
+          bodyBlocks.Add(block);
+        }
+
+        if (skipMessage)
+        {
+          messageNumber++;
+          continue; // Body blocks are now consumed - stream is aligned
+        }
+
+        // Step 6: Parse message content.
+        // Safe to catch exceptions here: all body blocks have already been read,
+        // so the stream position is correct regardless of what happens below.
+        try
+        {
           List<string> bodyLines = MessageBodyParser.ParseLines(bodyBlocks.ToArray());
-          
-          // Extract kludges from body lines (QWKE extended headers)
+
           List<MessageKludge> kludges = ExtractKludges(ref bodyLines);
-          
-          // Reconstruct raw text from body blocks for MessageBody constructor
+
           StringBuilder rawTextBuilder = new StringBuilder();
           foreach (byte[] block in bodyBlocks)
           {
             rawTextBuilder.Append(Cp437Encoding.Decode(block));
           }
           string rawText = rawTextBuilder.ToString();
-          
+
           MessageBody body = new MessageBody(bodyLines, rawText);
 
-          // Parse status from status byte
           MessageStatus status = ParseStatus(header.StatusByte);
 
-          // Parse date/time
           DateTime? messageDateTime = null;
           if (header.TryGetDateTime(out DateTime parsedDateTime))
           {
             messageDateTime = parsedDateTime;
           }
 
-          // Create kludge collection
           MessageKludgeCollection kludgeCollection = new MessageKludgeCollection(kludges);
 
-          // Parse reference number (ASCII field to integer)
           int referenceNumber = 0;
           if (!string.IsNullOrWhiteSpace(header.ReferenceNumber))
           {
@@ -619,7 +681,7 @@ public sealed class QwkPacket : IDisposable
           }
 
           Message message = new Message(
-            messageNumber++,
+            messageNumber,
             header.ConferenceNumber,
             header.From,
             header.To,
@@ -636,9 +698,11 @@ public sealed class QwkPacket : IDisposable
         }
         catch (Exception ex)
         {
-          context.AddWarning($"Failed to parse message {messageNumber}: {ex.Message}");
-          messageNumber++;
+          // Body blocks already consumed - stream is correctly positioned
+          context.AddWarning($"Failed to parse message {messageNumber} content: {ex.Message}");
         }
+
+        messageNumber++;
       }
 
       context.AddInfo($"Parsed {messages.Count} message(s) from MESSAGES.DAT.");
