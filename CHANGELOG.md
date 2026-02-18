@@ -5,7 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0] - 2026-02-18
+
+### Fixed
+
+- **Critical: kludge extraction used a structural heuristic that produced false positives.**
+`ExtractKludges` classified any line at the start of a message body as a kludge if it contained a colon with a single-word key — regardless of whether that key was a known kludge identifier. This could potentially cause legitimate body text to be stripped from the message and stored as spurious kludge entries. This fix replaces the heuristic with prefix-based recognition: only lines beginning with `@` (Synchronet `@`-kludges) or whose key is exactly one of the three QWKE-defined header names (`To`, `From`, `Subject`) are extracted. Any other line stops the scan and remains in the body, as do all lines following it.
+
+Malformed kludge lines did not and cannot prevent a message from being parsed or presented — the scanner stops at the first unrecognised line and the message is delivered in full.
+
+- **Minor: QWKE blank-line separator was consumed even when no kludges preceded it.**
+A blank line appearing before any kludge had been found is ordinary body formatting and must not be removed. The blank separator is now consumed only when at least one kludge has already been extracted.
+
+### Notes
+
+- CP437 decoding maps byte `0x01` (FidoNet SOH kludge prefix) to U+263A (`☺`). FidoNet kludges cannot be detected by inspecting decoded line content; supporting them would require inspection of the raw byte stream before CP437 decoding. This is documented in `ExtractKludges` for future reference.
+
 
 ## [1.1.0] - 2026-02-10
 

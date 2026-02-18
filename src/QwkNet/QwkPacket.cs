@@ -23,7 +23,7 @@ namespace QwkNet;
 /// whilst preserving byte-accurate fidelity to the original format.
 /// </para>
 /// <para>
-/// Messages are eagerly loaded during Open() for simplicity (typical usage: 1-16 MB).
+/// Messages are eagerly loaded during Open() for simplicity (typical usage: 1-10 MB).
 /// Optional files (WELCOME, NEWS, GOODBYE) are lazy-loaded on first access.
 /// </para>
 /// </remarks>
@@ -62,46 +62,6 @@ public sealed class QwkPacket : IDisposable
   /// </summary>
   public ValidationReport ValidationReport { get; }
 
-  /// <summary>
-  /// The maximum number of messages in a packet.
-  /// </summary>
-  /// <remarks>
-  /// <para>
-  /// The theoretical maximum number of messages in a QWK packet is primarily dictated
-  /// by the 7-character ASCII limit for message numbers within its internal header
-  /// format.
-  /// </para>
-  /// <para>
-  /// <b>Theoretical Maximums:</b>
-  /// </para>
-  /// <list>
-  /// <item>
-  /// 9,999,999 Message Limit: Each message in the MESSAGES.DAT file starts with a
-  /// 128-byte header record. This header uses a 7-byte ASCII field (positions 2
-  /// through 8) to store the message number. This field is fixed at 7 characters,
-  /// so the highest representable decimal number is 9,999,999.
-  /// </item>
-  /// <item>
-  /// Storage Limitations: While the message number field allows for nearly 10 million
-  /// messages, other architectural factors create practical ceilings.
-  /// <list>
-  /// <item>
-  /// Record Count Field: The header also contains a 6-byte ASCII field that tracks the
-  /// number of 128-byte blocks used by the message. This limits a single message to
-  /// 999,999 blocks (approx. 128 MB).
-  /// </item>
-  /// <item>
-  /// Filesystem Limits: Since QWK packets are typically ZIP archives, the total size
-  /// of MESSAGES.DAT is technically limited by the 2GB or 4GB caps of older file systems
-  /// (FAT16/FAT32), which would likely be reached long before 9.9 million messages could
-  /// be stored. 
-  /// </item>
-  /// </list>
-  /// </item>
-  /// </list>
-  /// </remarks>
-  private const int MAX_MESSAGE_COUNT = 9_999_999;
-
   private QwkPacket(
     IArchiveReader archive,
     ControlDat control,
@@ -125,23 +85,11 @@ public sealed class QwkPacket : IDisposable
   /// </summary>
   /// <param name="path">The path to the QWK packet file.</param>
   /// <param name="mode">The validation mode (default: Lenient).</param>
-  /// <param name="maxMessageSizeMB">
-  /// Optional maximum size in megabytes for individual messages. Messages exceeding
-  /// this limit will cause validation warnings or exceptions depending on the validation mode.
-  /// Default is 16MB. Pass <see langword="null"/> to use the default.
-  /// </param>
-  /// <param name="maxEntrySizeMB">
-  /// Optional maximum size in megabytes for individual archive entries. Entries exceeding
-  /// this limit will cause <see cref="InvalidDataException"/> to be thrown when opened.
-  /// If not specified, defaults to the larger of 100MB or <paramref name="maxMessageSizeMB"/> × 10.
-  /// Pass <see langword="null"/> to use the calculated default.
-  /// </param>
   /// <returns>A new <see cref="QwkPacket"/> instance.</returns>
   /// <exception cref="ArgumentNullException">Thrown when <paramref name="path"/> is null.</exception>
   /// <exception cref="FileNotFoundException">Thrown when the file does not exist.</exception>
   /// <exception cref="QwkFormatException">Thrown in Strict mode when format violations occur.</exception>
-  /// <exception cref="InvalidDataException">Thrown when an archive entry exceeds the maximum size limit.</exception>
-  public static QwkPacket Open(string path, ValidationMode mode = ValidationMode.Lenient, int? maxMessageSizeMB = 16, int? maxEntrySizeMB = null)
+  public static QwkPacket Open(string path, ValidationMode mode = ValidationMode.Lenient)
   {
     if (path == null)
     {
@@ -153,14 +101,12 @@ public sealed class QwkPacket : IDisposable
       throw new FileNotFoundException("QWK packet file not found.", path);
     }
 
-    int effectiveMaxEntrySizeMB = maxEntrySizeMB ?? Math.Max(100, (maxMessageSizeMB ?? 16) * 10);
-
     FileStream fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-    ZipArchiveReader archive = new ZipArchiveReader(fileStream, leaveOpen: false, maxEntrySizeMB: effectiveMaxEntrySizeMB);
+    ZipArchiveReader archive = new ZipArchiveReader(fileStream, leaveOpen: false);
 
     try
     {
-      return OpenFromArchive(archive, mode, maxMessageSizeMB);
+      return OpenFromArchive(archive, mode);
     }
     catch
     {
@@ -174,35 +120,21 @@ public sealed class QwkPacket : IDisposable
   /// </summary>
   /// <param name="stream">The stream containing the QWK packet data.</param>
   /// <param name="mode">The validation mode (default: Lenient).</param>
-  /// <param name="maxMessageSizeMB">
-  /// Optional maximum size in megabytes for individual messages. Messages exceeding
-  /// this limit will cause validation warnings or exceptions depending on the validation mode.
-  /// Default is 16MB. Pass <see langword="null"/> to use the default.
-  /// </param>
-  /// <param name="maxEntrySizeMB">
-  /// Optional maximum size in megabytes for individual archive entries. Entries exceeding
-  /// this limit will cause <see cref="InvalidDataException"/> to be thrown when opened.
-  /// If not specified, defaults to the larger of 100MB or <paramref name="maxMessageSizeMB"/> × 10.
-  /// Pass <see langword="null"/> to use the calculated default.
-  /// </param>
   /// <returns>A new <see cref="QwkPacket"/> instance.</returns>
   /// <exception cref="ArgumentNullException">Thrown when <paramref name="stream"/> is null.</exception>
   /// <exception cref="QwkFormatException">Thrown in Strict mode when format violations occur.</exception>
-  /// <exception cref="InvalidDataException">Thrown when an archive entry exceeds the maximum size limit.</exception>
-  public static QwkPacket Open(Stream stream, ValidationMode mode = ValidationMode.Lenient, int? maxMessageSizeMB = 16, int? maxEntrySizeMB = null)
+  public static QwkPacket Open(Stream stream, ValidationMode mode = ValidationMode.Lenient)
   {
     if (stream == null)
     {
       throw new ArgumentNullException(nameof(stream));
     }
 
-    int effectiveMaxEntrySizeMB = maxEntrySizeMB ?? Math.Max(100, (maxMessageSizeMB ?? 16) * 10);
-
-    ZipArchiveReader archive = new ZipArchiveReader(stream, leaveOpen: true, maxEntrySizeMB: effectiveMaxEntrySizeMB);
+    ZipArchiveReader archive = new ZipArchiveReader(stream, leaveOpen: true);
 
     try
     {
-      return OpenFromArchive(archive, mode, maxMessageSizeMB);
+      return OpenFromArchive(archive, mode);
     }
     catch
     {
@@ -216,22 +148,10 @@ public sealed class QwkPacket : IDisposable
   /// </summary>
   /// <param name="data">The packet data (ZIP format).</param>
   /// <param name="mode">The validation mode (default: Lenient).</param>
-  /// <param name="maxMessageSizeMB">
-  /// Optional maximum size in megabytes for individual messages. Messages exceeding
-  /// this limit will cause validation warnings or exceptions depending on the validation mode.
-  /// Default is 16MB. Pass <see langword="null"/> to use the default.
-  /// </param>
-  /// <param name="maxEntrySizeMB">
-  /// Optional maximum size in megabytes for individual archive entries. Entries exceeding
-  /// this limit will cause <see cref="InvalidDataException"/> to be thrown when opened.
-  /// If not specified, defaults to the larger of 100MB or <paramref name="maxMessageSizeMB"/> × 10.
-  /// Pass <see langword="null"/> to use the calculated default.
-  /// </param>
   /// <returns>A new <see cref="QwkPacket"/> instance.</returns>
   /// <exception cref="ArgumentException">Thrown when data is empty.</exception>
   /// <exception cref="QwkFormatException">Thrown in Strict mode when format violations occur.</exception>
-  /// <exception cref="InvalidDataException">Thrown when an archive entry exceeds the maximum size limit.</exception>
-  public static QwkPacket Open(ReadOnlyMemory<byte> data, ValidationMode mode = ValidationMode.Lenient, int? maxMessageSizeMB = 16, int? maxEntrySizeMB = null)
+  public static QwkPacket Open(ReadOnlyMemory<byte> data, ValidationMode mode = ValidationMode.Lenient)
   {
     if (data.Length == 0)
     {
@@ -239,7 +159,7 @@ public sealed class QwkPacket : IDisposable
     }
 
     MemoryStream stream = new MemoryStream(data.ToArray());
-    return Open(stream, mode, maxMessageSizeMB, maxEntrySizeMB);
+    return Open(stream, mode);
   }
 
   /// <summary>
@@ -262,7 +182,7 @@ public sealed class QwkPacket : IDisposable
     }
   }
 
-  private static QwkPacket OpenFromArchive(IArchiveReader archive, ValidationMode mode, int? maxMessageSizeMB = 16)
+  private static QwkPacket OpenFromArchive(IArchiveReader archive, ValidationMode mode)
   {
     ValidationContext context = new ValidationContext(mode);
 
@@ -273,7 +193,7 @@ public sealed class QwkPacket : IDisposable
     DoorId? doorId = ParseDoorId(archive, mode, context);
 
     // Parse MESSAGES.DAT (required)
-    List<Message> messages = ParseMessages(archive, context, mode, maxMessageSizeMB);
+    List<Message> messages = ParseMessages(archive, context);
 
     // Create collections
     MessageCollection messageCollection = new MessageCollection(messages);
@@ -439,47 +359,7 @@ public sealed class QwkPacket : IDisposable
     return true;
   }
 
-  /// <summary>
-  /// Reads exactly <see cref="BinaryRecordReader.RecordSize"/> (128) bytes from the stream,
-  /// looping until the buffer is full or the stream is exhausted.
-  /// </summary>
-  /// <remarks>
-  /// <para>
-  /// A single call to <see cref="Stream.Read(byte[], int, int)"/> is not guaranteed to return the requested
-  /// number of bytes, even when more data is available. This is true of any stream, but is
-  /// particularly common with <see cref="System.IO.Compression.DeflateStream"/>, which backs
-  /// every <see cref="System.IO.Compression.ZipArchiveEntry"/> opened for reading.
-  /// </para>
-  /// <para>
-  /// Relying on a single Read() call for fixed-size 128-byte QWK records causes incorrect
-  /// short-read detection: the caller sees e.g. 64 bytes returned, interprets it as a
-  /// truncated block, emits a warning, and breaks out of the body-block loop — leaving the
-  /// remaining bytes in the stream and causing every subsequent message to be misaligned.
-  /// </para>
-  /// </remarks>
-  /// <param name="stream">The stream to read from.</param>
-  /// <param name="buffer">The 128-byte buffer to fill.</param>
-  /// <returns>
-  /// The total number of bytes read. Returns 0 only at the true end of stream.
-  /// Returns 1–127 only if the stream ended mid-block (genuinely truncated data).
-  /// Returns 128 on full success.
-  /// </returns>
-  private static int ReadBlock(Stream stream, byte[] buffer)
-  {
-    int totalRead = 0;
-    while (totalRead < BinaryRecordReader.RecordSize)
-    {
-      int bytesRead = stream.Read(buffer, totalRead, BinaryRecordReader.RecordSize - totalRead);
-      if (bytesRead == 0)
-      {
-        break; // True end of stream
-      }
-      totalRead += bytesRead;
-    }
-    return totalRead;
-  }
-
-  private static List<Message> ParseMessages(IArchiveReader archive, ValidationContext context, ValidationMode mode, int? maxMessageSizeMB = 16)
+  private static List<Message> ParseMessages(IArchiveReader archive, ValidationContext context)
   {
     List<Message> messages = new List<Message>();
 
@@ -493,45 +373,42 @@ public sealed class QwkPacket : IDisposable
     {
       using Stream stream = archive.OpenFile("MESSAGES.DAT");
 
-      // Skip first 128-byte copyright record.
-      // Use ReadBlock() — DeflateStream.Read() may return fewer bytes than requested
-      // even mid-stream, so a single Read() call is not sufficient.
-      byte[] copyrightBlock = new byte[BinaryRecordReader.RecordSize];
-      int copyrightRead = ReadBlock(stream, copyrightBlock);
-      if (copyrightRead < BinaryRecordReader.RecordSize)
+      // Skip first 128-byte copyright record
+      byte[] copyrightBlock = new byte[128];
+      int copyrightRead = stream.Read(copyrightBlock, 0, 128);
+      if (copyrightRead < 128)
       {
         context.AddWarning("MESSAGES.DAT is too small (missing copyright block).");
         return messages;
       }
 
+      // Read messages until stream exhausted
       int messageNumber = 1;
 
       while (true)
       {
-        // Step 1: Read header block.
-        // ReadBlock() loops internally until 128 bytes are read or EOF is reached,
-        // preventing DeflateStream short-reads from being misinterpreted as truncation.
-        byte[] headerBytes = new byte[BinaryRecordReader.RecordSize];
-        int headerRead = ReadBlock(stream, headerBytes);
+        // Read 128-byte header
+        byte[] headerBytes = new byte[128];
+        int headerRead = stream.Read(headerBytes, 0, 128);
 
         if (headerRead == 0)
         {
-          break; // Clean end of stream
+          break; // End of stream
         }
 
-        if (headerRead < BinaryRecordReader.RecordSize)
+        if (headerRead < 128)
         {
           context.AddWarning($"Message {messageNumber}: Incomplete header block ({headerRead} bytes).");
           break;
         }
 
-        // Step 2: Validate header structure before attempting to parse.
-        // This guards against body blocks being mistaken for headers when
-        // stream alignment is lost.
+        // Validate header structure before attempting to parse
+        // This prevents body blocks from being misinterpreted as message headers
         if (!IsPlausibleMessageHeader(headerBytes))
         {
           long estimatedOffset = 128 + ((long)(messageNumber - 1) * 128);
 
+          // Determine which delimiter type was found (if any) for diagnostics
           byte delim1 = headerBytes[10];
           byte delim2 = headerBytes[13];
           bool hasDateDelimiters =
@@ -546,134 +423,71 @@ public sealed class QwkPacket : IDisposable
             $"Time colon: {headerBytes[18] == (byte)':'}, " +
             $"Alive flag: 0x{headerBytes[122]:X2}");
 
+          // Skip this invalid block and continue to next block
+          // In lenient/salvage mode, we attempt to recover by continuing
           continue;
         }
 
-        // Step 3: Parse the header record.
-        // Isolated in its own try/catch: if this throws, the stream is still aligned
-        // (we have only consumed the 128-byte header block) so continuing is safe.
-        QwkMessageHeader header;
         try
         {
-          header = QwkMessageHeader.Parse(headerBytes);
-        }
-        catch (Exception ex)
-        {
-          context.AddWarning($"Failed to parse header for message {messageNumber}: {ex.Message}");
-          messageNumber++;
-          continue; // Stream still aligned - header block already consumed
-        }
+          QwkMessageHeader header = QwkMessageHeader.Parse(headerBytes);
 
-        // Step 4: Validate block count and determine how many body blocks to read.
-        // Use a flag rather than an early continue, so that body blocks are always
-        // consumed before we decide whether to skip the message.
-        int totalBlocks = header.BlockCount;
-        int bodyBlockCount = Math.Max(0, totalBlocks - 1);
-        bool skipMessage = false;
+          // Parse block count (number of 128-byte body blocks, header is block 1)
+          int totalBlocks = header.BlockCount;
+          int bodyBlockCount = Math.Max(0, totalBlocks - 1);
 
-        if (maxMessageSizeMB.HasValue)
-        {
-          long maxBytes = maxMessageSizeMB.Value * 1024L * 1024L;
-          long maxBlocks = maxBytes / 128L;
-          long messageBytes = totalBlocks * 128L;
-
-          if (totalBlocks > maxBlocks)
+          // Read message body blocks
+          List<byte[]> bodyBlocks = new List<byte[]>();
+          for (int i = 0; i < bodyBlockCount; i++)
           {
-            double messageSizeMB = messageBytes / (1024.0 * 1024.0);
-            string error = $"Message {messageNumber}: Block count {totalBlocks} exceeds maximum ({maxBlocks} blocks, {maxMessageSizeMB}MB). Message size: {messageSizeMB:F2}MB.";
+            byte[] block = new byte[128];
+            int blockRead = stream.Read(block, 0, 128);
 
-            if (mode == ValidationMode.Strict)
+            if (blockRead == 0)
             {
-              throw new QwkFormatException(error);
+              context.AddWarning($"Message {messageNumber}: Missing body block {i + 1}/{bodyBlockCount}.");
+              break;
             }
 
-            context.AddWarning(error);
-            skipMessage = true; // Body blocks must still be consumed below
-          }
-
-          if (!skipMessage && stream.CanSeek)
-          {
-            long remainingBytes = stream.Length - stream.Position;
-            if (messageBytes > remainingBytes)
+            if (blockRead < 128)
             {
-              string error = $"Message {messageNumber}: Block count {totalBlocks} exceeds remaining stream bytes ({remainingBytes} bytes).";
-              context.AddWarning(error);
-
-              if (mode == ValidationMode.Strict)
-              {
-                throw new QwkFormatException(error);
-              }
-
-              skipMessage = true; // Body blocks must still be consumed below
+              context.AddWarning($"Message {messageNumber}: Incomplete body block {i + 1}/{bodyBlockCount} ({blockRead} bytes).");
+              break;
             }
-          }
-        }
 
-        // Step 5: Read body blocks.
-        // CRITICAL: this loop runs unconditionally — even when skipMessage is true.
-        // The stream must advance past every body block belonging to this message
-        // before the next iteration can read the next message header correctly.
-        // Failure to do so (an early continue above this point) is what previously
-        // caused all messages after the first skipped one to be silently lost.
-        List<byte[]> bodyBlocks = new List<byte[]>();
-        for (int i = 0; i < bodyBlockCount; i++)
-        {
-          byte[] block = new byte[BinaryRecordReader.RecordSize];
-          int blockRead = ReadBlock(stream, block);
-
-          if (blockRead == 0)
-          {
-            context.AddWarning($"Message {messageNumber}: Missing body block {i + 1}/{bodyBlockCount}.");
-            break;
+            bodyBlocks.Add(block);
           }
 
-          if (blockRead < BinaryRecordReader.RecordSize)
-          {
-            context.AddWarning($"Message {messageNumber}: Incomplete body block {i + 1}/{bodyBlockCount} ({blockRead} bytes).");
-            // Pad the incomplete block so callers always receive a full 128-byte buffer
-            byte[] paddedBlock = new byte[BinaryRecordReader.RecordSize];
-            Array.Copy(block, paddedBlock, blockRead);
-            bodyBlocks.Add(paddedBlock);
-            break;
-          }
-
-          bodyBlocks.Add(block);
-        }
-
-        if (skipMessage)
-        {
-          messageNumber++;
-          continue; // Body blocks are now consumed - stream is aligned
-        }
-
-        // Step 6: Parse message content.
-        // Safe to catch exceptions here: all body blocks have already been read,
-        // so the stream position is correct regardless of what happens below.
-        try
-        {
+          // Parse body lines using MessageBodyParser
           List<string> bodyLines = MessageBodyParser.ParseLines(bodyBlocks.ToArray());
-
+          
+          // Extract kludges from body lines (QWKE extended headers)
           List<MessageKludge> kludges = ExtractKludges(ref bodyLines);
-
+          
+          // Reconstruct raw text from body blocks for MessageBody constructor
           StringBuilder rawTextBuilder = new StringBuilder();
           foreach (byte[] block in bodyBlocks)
           {
             rawTextBuilder.Append(Cp437Encoding.Decode(block));
           }
           string rawText = rawTextBuilder.ToString();
-
+          
           MessageBody body = new MessageBody(bodyLines, rawText);
 
+          // Parse status from status byte
           MessageStatus status = ParseStatus(header.StatusByte);
 
+          // Parse date/time
           DateTime? messageDateTime = null;
           if (header.TryGetDateTime(out DateTime parsedDateTime))
           {
             messageDateTime = parsedDateTime;
           }
 
+          // Create kludge collection
           MessageKludgeCollection kludgeCollection = new MessageKludgeCollection(kludges);
 
+          // Parse reference number (ASCII field to integer)
           int referenceNumber = 0;
           if (!string.IsNullOrWhiteSpace(header.ReferenceNumber))
           {
@@ -681,7 +495,7 @@ public sealed class QwkPacket : IDisposable
           }
 
           Message message = new Message(
-            messageNumber,
+            messageNumber++,
             header.ConferenceNumber,
             header.From,
             header.To,
@@ -698,11 +512,9 @@ public sealed class QwkPacket : IDisposable
         }
         catch (Exception ex)
         {
-          // Body blocks already consumed - stream is correctly positioned
-          context.AddWarning($"Failed to parse message {messageNumber} content: {ex.Message}");
+          context.AddWarning($"Failed to parse message {messageNumber}: {ex.Message}");
+          messageNumber++;
         }
-
-        messageNumber++;
       }
 
       context.AddInfo($"Parsed {messages.Count} message(s) from MESSAGES.DAT.");
@@ -712,11 +524,6 @@ public sealed class QwkPacket : IDisposable
       context.AddError($"Failed to read MESSAGES.DAT: {ex.Message}");
     }
 
-    if (messages.Count >= MAX_MESSAGE_COUNT)
-    {
-      context.AddWarning($"Message count ({messages.Count}) exceeds maximum ({MAX_MESSAGE_COUNT}).");
-    }
-
     return messages;
   }
 
@@ -724,9 +531,50 @@ public sealed class QwkPacket : IDisposable
   /// Extracts kludge lines from the beginning of the body lines.
   /// </summary>
   /// <remarks>
-  /// QWKE extended headers (To:, From:, Subject:) appear as kludge lines at the
-  /// beginning of the message body. This method extracts them and removes them
-  /// from the body lines list.
+  /// <para>
+  /// Two distinct kludge conventions are recognised, both of which appear at the
+  /// very top of the message body before any human-readable content:
+  /// </para>
+  /// <list type="bullet">
+  /// <item>
+  /// <term>QWKE extended headers</term>
+  /// <description>
+  /// Lines whose key (text before the first colon) is exactly one of <c>To</c>,
+  /// <c>From</c>, or <c>Subject</c> (case-insensitive). Defined by Peter Rocca's
+  /// QWKE Specification v1.02.
+  /// </description>
+  /// </item>
+  /// <item>
+  /// <term>Synchronet <c>@</c>-kludges</term>
+  /// <description>
+  /// Lines beginning with <c>@</c> followed by an identifier and a colon,
+  /// e.g. <c>@MSGID:</c>, <c>@REPLY:</c>, <c>@VIA:</c>, <c>@TZ:</c>. Synchronet-specific
+  /// extension; the key stored includes the leading <c>@</c>.
+  /// </description>
+  /// </item>
+  /// </list>
+  /// <para>
+  /// Scanning stops unconditionally at the first blank line or at any line that does
+  /// not match one of the two conventions above. This prevents body text such as
+  /// Synchronet's <c>Re:</c> / <c>By:</c> reply attribution lines from being
+  /// misidentified as kludges.
+  /// </para>
+  /// <para>
+  /// The QWKE specification requires a blank line between the last kludge and the
+  /// message body proper. That blank line is consumed (removed from the body) only
+  /// when at least one kludge has already been extracted — it is acting as a
+  /// delimiter and carries no content value. A blank line that appears before any
+  /// kludge has been found is ordinary body formatting and is left intact.
+  /// In practice many real-world packets omit the blank separator entirely;
+  /// the prefix-based detection means the scanner stops correctly in either case.
+  /// </para>
+  /// <para>
+  /// Note on FidoNet SOH kludges: FidoNet kludges use a byte-value-1 (SOH) prefix
+  /// in the raw packet, but CP437 decoding maps byte <c>0x01</c> to U+263A (☺).
+  /// If a future requirement arises to support FidoNet-origin packets, this method
+  /// must be extended to detect <c>line[0] == '☺'</c> rather than <c>'\x01'</c>,
+  /// and the byte stream would need to be inspected before CP437 decoding.
+  /// </para>
   /// </remarks>
   private static List<MessageKludge> ExtractKludges(ref List<string> bodyLines)
   {
@@ -739,44 +587,97 @@ public sealed class QwkPacket : IDisposable
 
     int kludgeLineCount = 0;
 
-    // Kludges appear at the start of the message
     for (int i = 0; i < bodyLines.Count; i++)
     {
       string line = bodyLines[i];
 
-      // Kludge lines must contain a colon
-      int colonIndex = line.IndexOf(':');
-      if (colonIndex < 1)
+      // A blank line terminates the kludge block.
+      // It is consumed only when at least one kludge has already been found —
+      // it is then acting as the QWKE-specified separator between the kludge
+      // block and the message body, and carries no content value.
+      // A blank line that appears before any kludges is ordinary body content
+      // and must not be removed.
+      if (string.IsNullOrEmpty(line))
       {
-        // Not a kludge line, stop scanning
+        if (kludgeLineCount > 0)
+        {
+          kludgeLineCount++;
+        }
         break;
       }
 
-      string key = line.Substring(0, colonIndex).Trim();
-      string value = colonIndex + 1 < line.Length
-        ? line.Substring(colonIndex + 1).TrimStart()
-        : string.Empty;
+      // Determine which kludge convention this line belongs to, if any.
+      string key;
+      string value;
 
-      // Only extract if key looks like a kludge (single word, no spaces)
-      if (key.Contains(" ") || string.IsNullOrWhiteSpace(key))
+      if (line[0] == '@')
       {
-        // Not a kludge, stop scanning
-        break;
+        // Synchronet @-kludge: @KEY: value
+        int colonIndex = line.IndexOf(':');
+        if (colonIndex < 2)
+        {
+          // '@' alone before colon is not valid.
+          break;
+        }
+
+        key = line.Substring(0, colonIndex).Trim();
+        value = colonIndex + 1 < line.Length
+          ? line.Substring(colonIndex + 1).TrimStart()
+          : string.Empty;
+
+        // Key must be a single token with no spaces.
+        if (key.Contains(' ') || string.IsNullOrWhiteSpace(key))
+        {
+          break;
+        }
+      }
+      else
+      {
+        // Possible QWKE extended header: To: / From: / Subject: only.
+        // Any other colon-containing line (Re:, By:, URLs, etc.) is body text.
+        int colonIndex = line.IndexOf(':');
+        if (colonIndex < 1)
+        {
+          break;
+        }
+
+        key = line.Substring(0, colonIndex).Trim();
+
+        if (!IsQwkeHeaderKey(key))
+        {
+          break;
+        }
+
+        value = colonIndex + 1 < line.Length
+          ? line.Substring(colonIndex + 1).TrimStart()
+          : string.Empty;
       }
 
-      // Create kludge with raw line preserved
-      MessageKludge kludge = new MessageKludge(key, value, line);
-      kludges.Add(kludge);
+      kludges.Add(new MessageKludge(key, value, line));
       kludgeLineCount++;
     }
 
-    // Remove kludge lines from body
     if (kludgeLineCount > 0)
     {
       bodyLines.RemoveRange(0, kludgeLineCount);
     }
 
     return kludges;
+  }
+
+  /// <summary>
+  /// Returns <see langword="true"/> if the given key is one of the three QWKE-defined
+  /// extended header names (<c>To</c>, <c>From</c>, <c>Subject</c>).
+  /// </summary>
+  /// <param name="key">The candidate key, without trailing colon.</param>
+  /// <returns>
+  /// <see langword="true"/> if the key matches a QWKE header name; otherwise <see langword="false"/>.
+  /// </returns>
+  private static bool IsQwkeHeaderKey(string key)
+  {
+    return string.Equals(key, "To", StringComparison.OrdinalIgnoreCase)
+      || string.Equals(key, "From", StringComparison.OrdinalIgnoreCase)
+      || string.Equals(key, "Subject", StringComparison.OrdinalIgnoreCase);
   }
 
   private static MessageStatus ParseStatus(byte statusByte)
