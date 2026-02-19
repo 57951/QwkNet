@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-02-19
+
+### Fixed
+
+- **Critical: message count severely under-reported on packets with large messages.**
+`ParseMessages` allocated a `byte[]` buffer and called `stream.Read()` directly to
+fill each 128-byte record. `DeflateStream` (which backs every `ZipArchiveEntry`
+opened for reading) could have legally returned fewer bytes than requested in a single call even when more data was available — this is permitted by the `Stream.Read` contract.
+
+A short read on a body block was treated as a truncated record: a warning was
+emitted, the body-block loop broke early, and the stream was left misaligned at the
+mid-block position. All subsequent messages were then read at the wrong offset,
+failed the `IsPlausibleMessageHeader` plausibility check, and were silently
+discarded. All three `stream.Read()` call sites in `ParseMessages` (copyright block, header block, and each body block) have been replaced with `BinaryRecordReader.ReadRecord()`, which already existed in the codebase and already retried internally until the 128-byte buffer was genuinely full or true end-of-stream was reached. The magic literal `128` at each site has been replaced with `BinaryRecordReader.RecordSize`.
+
+
 ## [1.2.0] - 2026-02-18
 
 ### Fixed

@@ -373,42 +373,51 @@ public sealed class QwkPacket : IDisposable
     {
       using Stream stream = archive.OpenFile("MESSAGES.DAT");
 
-      // Skip first 128-byte copyright record
-      byte[] copyrightBlock = new byte[128];
-      int copyrightRead = stream.Read(copyrightBlock, 0, 128);
-      if (copyrightRead < 128)
+      // BinaryRecordReader retries internally until exactly 128 bytes have been
+      // accumulated or the stream is genuinely exhausted.  Bare stream.Read()
+      // must not be used here: compressed ZIP entry streams (deflate) routinely
+      // return fewer bytes than requested at internal chunk boundaries even when
+      // more data remains.  Treating such a short read as EOF caused DMINE.qwk
+      // to stop at 24 messages instead of 204.
+      using BinaryRecordReader reader = new BinaryRecordReader(stream, leaveOpen: true);
+
+      // Skip first 128-byte copyright/greeting record.
+      byte[] copyrightBlock = new byte[BinaryRecordReader.RecordSize];
+      int copyrightRead = reader.ReadRecord(copyrightBlock);
+      if (copyrightRead < BinaryRecordReader.RecordSize)
       {
         context.AddWarning("MESSAGES.DAT is too small (missing copyright block).");
         return messages;
       }
 
-      // Read messages until stream exhausted
+      // Read messages until stream exhausted.
       int messageNumber = 1;
 
       while (true)
       {
-        // Read 128-byte header
-        byte[] headerBytes = new byte[128];
-        int headerRead = stream.Read(headerBytes, 0, 128);
+        // Read 128-byte header block.  ReadRecord() loops internally, so a
+        // single call always returns either 0 (EOF) or exactly RecordSize bytes.
+        byte[] headerBytes = new byte[BinaryRecordReader.RecordSize];
+        int headerRead = reader.ReadRecord(headerBytes);
 
         if (headerRead == 0)
         {
           break; // End of stream
         }
 
-        if (headerRead < 128)
+        if (headerRead < BinaryRecordReader.RecordSize)
         {
           context.AddWarning($"Message {messageNumber}: Incomplete header block ({headerRead} bytes).");
           break;
         }
 
-        // Validate header structure before attempting to parse
-        // This prevents body blocks from being misinterpreted as message headers
+        // Validate header structure before attempting to parse.
+        // This prevents body blocks from being misinterpreted as message headers.
         if (!IsPlausibleMessageHeader(headerBytes))
         {
           long estimatedOffset = 128 + ((long)(messageNumber - 1) * 128);
 
-          // Determine which delimiter type was found (if any) for diagnostics
+          // Determine which delimiter type was found (if any) for diagnostics.
           byte delim1 = headerBytes[10];
           byte delim2 = headerBytes[13];
           bool hasDateDelimiters =
@@ -423,8 +432,8 @@ public sealed class QwkPacket : IDisposable
             $"Time colon: {headerBytes[18] == (byte)':'}, " +
             $"Alive flag: 0x{headerBytes[122]:X2}");
 
-          // Skip this invalid block and continue to next block
-          // In lenient/salvage mode, we attempt to recover by continuing
+          // Skip this invalid block and continue to the next.
+          // In lenient/salvage mode we attempt to recover by continuing.
           continue;
         }
 
@@ -432,16 +441,16 @@ public sealed class QwkPacket : IDisposable
         {
           QwkMessageHeader header = QwkMessageHeader.Parse(headerBytes);
 
-          // Parse block count (number of 128-byte body blocks, header is block 1)
+          // Parse block count (number of 128-byte body blocks, header is block 1).
           int totalBlocks = header.BlockCount;
           int bodyBlockCount = Math.Max(0, totalBlocks - 1);
 
-          // Read message body blocks
+          // Read message body blocks.
           List<byte[]> bodyBlocks = new List<byte[]>();
           for (int i = 0; i < bodyBlockCount; i++)
           {
-            byte[] block = new byte[128];
-            int blockRead = stream.Read(block, 0, 128);
+            byte[] block = new byte[BinaryRecordReader.RecordSize];
+            int blockRead = reader.ReadRecord(block);
 
             if (blockRead == 0)
             {
@@ -449,7 +458,7 @@ public sealed class QwkPacket : IDisposable
               break;
             }
 
-            if (blockRead < 128)
+            if (blockRead < BinaryRecordReader.RecordSize)
             {
               context.AddWarning($"Message {messageNumber}: Incomplete body block {i + 1}/{bodyBlockCount} ({blockRead} bytes).");
               break;
