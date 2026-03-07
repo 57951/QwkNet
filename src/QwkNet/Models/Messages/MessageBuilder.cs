@@ -396,9 +396,10 @@ public sealed class MessageBuilder
   /// <summary>
   /// Converts <see cref="MessageStatus"/> flags to the QWK status byte.
   /// </summary>
-  /// <param name="status">The status flags.</param>
+  /// <param name="status">The status flags to convert.</param>
   /// <returns>
-  /// The QWK status byte character.
+  /// The QWK status byte, where bits 0–6 encode the ASCII status character and
+  /// bit 7 is set if <see cref="MessageStatus.HasNetworkTagLine"/> is present.
   /// </returns>
   private static byte ConvertStatusToQwkByte(MessageStatus status)
   {
@@ -408,35 +409,25 @@ public sealed class MessageBuilder
     bool isSenderPassword = status.HasFlag(MessageStatus.SenderPasswordProtected);
     bool isGroupPassword = status.HasFlag(MessageStatus.GroupPasswordProtected);
     bool isGroupPasswordToAll = status.HasFlag(MessageStatus.GroupPasswordProtectedToAll);
+    bool hasNetworkTagLine = status.HasFlag(MessageStatus.HasNetworkTagLine);
 
-    // Handle password protection first (highest priority)
-    if (isGroupPasswordToAll)
+    // Resolve the ASCII status character, highest-priority class first.
+    byte Resolve()
     {
-      return (byte)'$';
+      if (isGroupPasswordToAll) return (byte)'$';
+      if (isGroupPassword)      return (byte)(isRead ? '#' : '!');
+      if (isSenderPassword)     return (byte)(isRead ? '^' : '%');
+      if (isCommentToSysop)     return (byte)(isRead ? '`' : '~');
+      if (isPrivate)            return (byte)(isRead ? '+' : '*');
+                                return (byte)(isRead ? '-' : ' ');
     }
 
-    if (isGroupPassword)
-    {
-      return (byte)(isRead ? '#' : '!');
-    }
+    // Restore bit 7 if the network tag-line flag is set.
+    byte statusByte = Resolve();
+    if (hasNetworkTagLine)
+      statusByte |= 0x80;
 
-    if (isSenderPassword)
-    {
-      return (byte)(isRead ? '^' : '%');
-    }
-
-    if (isCommentToSysop)
-    {
-      return (byte)(isRead ? '`' : '~');
-    }
-
-    if (isPrivate)
-    {
-      return (byte)(isRead ? '+' : '*');
-    }
-
-    // Public message
-    return (byte)(isRead ? '-' : ' ');
+    return statusByte;
   }
 
   /// <summary>

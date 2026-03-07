@@ -689,48 +689,59 @@ public sealed class QwkPacket : IDisposable
       || string.Equals(key, "Subject", StringComparison.OrdinalIgnoreCase);
   }
 
+  /// <summary>
+  /// Parses a QWK message status byte into a <see cref="MessageStatus"/> flags value.
+  /// </summary>
+  /// <param name="statusByte">
+  /// The raw status byte from offset 0 of the 128-byte QWK message header.
+  /// </param>
+  /// <returns>
+  /// A <see cref="MessageStatus"/> value representing the visibility, read state,
+  /// and protection level of the message.
+  /// </returns>
+  /// <remarks>
+  /// The status byte is defined in the QWK specification as a single ASCII character.
+  /// Some legacy BBS software (e.g. PCBoard) sets bit 7 as an overlay flag to indicate
+  /// a message has been exported or received. This bit is masked out before matching
+  /// the ASCII character, then captured separately as <see cref="MessageStatus.HasNetworkTagLine"/>.
+  /// </remarks>
   private static MessageStatus ParseStatus(byte statusByte)
   {
-    MessageStatus status = MessageStatus.None;
+    // Mask bit 7 before matching — some legacy BBS software (e.g. PCBoard) sets it
+    // as an exported/received overlay. The ASCII status character occupies bits 0–6.
+    char statusChar = (char)(statusByte & 0x7F);
 
-    // Check individual bits based on QWK specification
-    char statusChar = (char)statusByte;
-
-    switch (statusChar)
+    MessageStatus status = statusChar switch
     {
-      case ' ': // Public, unread
-        break;
-      case '-': // Public, read
-        status = MessageStatus.Read;
-        break;
-      case '*': // Private, unread
-        status = MessageStatus.Private;
-        break;
-      case '+': // Private, read
-        status = MessageStatus.Private | MessageStatus.Read;
-        break;
-      case '~': // Comment to sysop, unread
-        status = MessageStatus.CommentToSysop;
-        break;
-      case '`': // Comment to sysop, read
-        status = MessageStatus.CommentToSysop | MessageStatus.Read;
-        break;
-      case '%': // Sender password protected, unread
-        status = MessageStatus.Private | MessageStatus.SenderPasswordProtected;
-        break;
-      case '^': // Sender password protected, read
-        status = MessageStatus.Private | MessageStatus.SenderPasswordProtected | MessageStatus.Read;
-        break;
-      case '!': // Group password protected, unread
-        status = MessageStatus.Private | MessageStatus.GroupPasswordProtected;
-        break;
-      case '#': // Group password protected, read
-        status = MessageStatus.Private | MessageStatus.GroupPasswordProtected | MessageStatus.Read;
-        break;
-      case '$': // Group password protected to ALL
-        status = MessageStatus.GroupPasswordProtected;
-        break;
-    }
+      // Public, unread
+      ' ' => MessageStatus.None,
+      // Public, read
+      '-' => MessageStatus.Read,
+      // Private, unread
+      '*' => MessageStatus.Private,
+      // Private, read
+      '+' => MessageStatus.Private | MessageStatus.Read,
+      // Comment to sysop, unread
+      '~' => MessageStatus.CommentToSysop,
+      // Comment to sysop, read
+      '`' => MessageStatus.CommentToSysop | MessageStatus.Read,
+      // Sender password protected, unread
+      '%' => MessageStatus.Private | MessageStatus.SenderPasswordProtected,
+      // Sender password protected, read
+      '^' => MessageStatus.Private | MessageStatus.SenderPasswordProtected | MessageStatus.Read,
+      // Group password protected, unread
+      '!' => MessageStatus.Private | MessageStatus.GroupPasswordProtected,
+      // Group password protected, read
+      '#' => MessageStatus.Private | MessageStatus.GroupPasswordProtected | MessageStatus.Read,
+      // Group password protected, addressed to ALL
+      '$' => MessageStatus.GroupPasswordProtectedToAll,
+
+      _   => MessageStatus.None
+    };
+
+    // Capture bit 7 if set — indicates a network tag-line is appended to the message.
+    if ((statusByte & 0x80) != 0)
+      status |= MessageStatus.HasNetworkTagLine;
 
     return status;
   }

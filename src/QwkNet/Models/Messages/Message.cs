@@ -124,6 +124,40 @@ public sealed class Message
   public bool IsDeleted => Status.HasFlag(MessageStatus.Deleted);
 
   /// <summary>
+  /// Gets a value indicating whether this message is a comment to the sysop.
+  /// </summary>
+  /// <value>
+  /// <c>true</c> if the message has the <see cref="MessageStatus.CommentToSysop"/> flag; otherwise, <c>false</c>.
+  /// </value>
+  public bool IsCommentToSysop => Status.HasFlag(MessageStatus.CommentToSysop);
+
+  /// <summary>
+  /// Gets a value indicating whether this message is publicly visible.
+  /// </summary>
+  /// <value>
+  /// <c>true</c> if the message has neither the <see cref="MessageStatus.Private"/> nor the
+  /// <see cref="MessageStatus.CommentToSysop"/> flag; otherwise, <c>false</c>.
+  /// </value>
+  /// <remarks>
+  /// A sysop comment is not considered public even though it lacks the private flag,
+  /// hence both flags must be absent for a message to be truly public.
+  /// </remarks>
+  public bool IsPublic => !Status.HasFlag(MessageStatus.Private)
+                      && !Status.HasFlag(MessageStatus.CommentToSysop);
+
+  /// <summary>
+  /// Gets a value indicating whether this message has a network tag-line appended.
+  /// </summary>
+  /// <value>
+  /// <c>true</c> if the message has the <see cref="MessageStatus.HasNetworkTagLine"/> flag; otherwise, <c>false</c>.
+  /// </value>
+  /// <remarks>
+  /// Set when bit 7 of the status byte is present, as used by some legacy BBS software
+  /// (e.g. PCBoard) to indicate the message has been exported or received over a network.
+  /// </remarks>
+  public bool HasNetworkTagLine => Status.HasFlag(MessageStatus.HasNetworkTagLine);
+
+  /// <summary>
   /// Gets the collection of kludge lines in this message.
   /// </summary>
   /// <value>
