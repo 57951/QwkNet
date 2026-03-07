@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+---
+
+## [1.3.2] - 2026-03-07
+
+### Added
+
+- Additional status properties added to `REP` packet structure.
+
+### Improved
+
+- Status byte parsing for both standard and `REP` packet formats.
+
+---
+
+## [1.3.1] - 2026-03-07
+
+### Added
+
+- Enhanced `Message` model with additional status properties.
+
+### Improved
+
+- Improved status byte parsing logic for `QWK` packets.
+
+---
+
 ## [1.3.0] - 2026-02-19
 
 ### Fixed
@@ -20,6 +46,7 @@ mid-block position. All subsequent messages were then read at the wrong offset,
 failed the `IsPlausibleMessageHeader` plausibility check, and were silently
 discarded. All three `stream.Read()` call sites in `ParseMessages` (copyright block, header block, and each body block) have been replaced with `BinaryRecordReader.ReadRecord()`, which already existed in the codebase and already retried internally until the 128-byte buffer was genuinely full or true end-of-stream was reached. The magic literal `128` at each site has been replaced with `BinaryRecordReader.RecordSize`.
 
+---
 
 ## [1.2.0] - 2026-02-18
 
@@ -37,6 +64,7 @@ A blank line appearing before any kludge had been found is ordinary body formatt
 
 - CP437 decoding maps byte `0x01` (FidoNet SOH kludge prefix) to U+263A (`☺`). FidoNet kludges cannot be detected by inspecting decoded line content; supporting them would require inspection of the raw byte stream before CP437 decoding. This is documented in `ExtractKludges` for future reference.
 
+---
 
 ## [1.1.0] - 2026-02-10
 
@@ -48,6 +76,7 @@ A blank line appearing before any kludge had been found is ordinary body formatt
 
 - **Documentation: ambiguous `cref` on `Stream.Read` in `ReadBlock` XML comment** resolved by specifying the `Stream.Read(byte[], int, int)` overload explicitly.
 
+---
 
 ## [1.0.0] - 2026-01-19
 

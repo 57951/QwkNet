@@ -412,34 +412,39 @@ public sealed class RepPacket : IDisposable
   /// <returns>
   /// A 128-byte array containing the message header.
   /// </returns>
+  /// <remarks>
+  /// The raw header is used as the base to preserve fields not modelled explicitly.
+  /// The status byte (offset 0) and message number (offsets 1–7) are always
+  /// recalculated from the message model to ensure consistency.
+  /// </remarks>
   private static byte[] BuildMessageHeader(Message message, int messageNumber)
   {
     byte[] headerBytes = new byte[QwkRecordSize];
 
-    // Copy the raw header bytes directly
+    // Use the raw header as a base to preserve any fields not modelled explicitly.
     byte[] rawHeaderBytes = message.RawHeader.RawHeader;
     Array.Copy(rawHeaderBytes, 0, headerBytes, 0, QwkRecordSize);
 
-    // Clear the message number field (bytes 1-7) with spaces
-    for (int i = 1; i < 8; i++)
-    {
-      headerBytes[i] = (byte)' ';
-    }
+    // Recalculate status byte (offset 0) from the message model — the raw header
+    // may be stale if Status has been modified since the message was parsed.
+    headerBytes[0] = ConvertStatusToQwkByte(message.Status);
 
-    // Update message number (bytes 1-7)
+    // Recalculate message number (offsets 1–7) for sequential numbering.
+    for (int i = 1; i < 8; i++)
+      headerBytes[i] = (byte)' ';
+
     WriteAsciiField(headerBytes, 1, messageNumber.ToString(), 7);
 
     return headerBytes;
   }
 
   /// <summary>
-  /// Converts <see cref="MessageStatus"/> flags to a QWK status byte.
+  /// Converts <see cref="MessageStatus"/> flags to the QWK status byte.
   /// </summary>
-  /// <param name="status">
-  /// The status flags.
-  /// </param>
+  /// <param name="status">The status flags to convert.</param>
   /// <returns>
-  /// The QWK status byte.
+  /// The QWK status byte, where bits 0–6 encode the ASCII status character and
+  /// bit 7 is set if <see cref="MessageStatus.HasNetworkTagLine"/> is present.
   /// </returns>
   private static byte ConvertStatusToQwkByte(MessageStatus status)
   {
@@ -449,35 +454,25 @@ public sealed class RepPacket : IDisposable
     bool isSenderPassword = status.HasFlag(MessageStatus.SenderPasswordProtected);
     bool isGroupPassword = status.HasFlag(MessageStatus.GroupPasswordProtected);
     bool isGroupPasswordToAll = status.HasFlag(MessageStatus.GroupPasswordProtectedToAll);
+    bool hasNetworkTagLine = status.HasFlag(MessageStatus.HasNetworkTagLine);
 
-    // Handle password protection first (highest priority)
-    if (isGroupPasswordToAll)
+    // Resolve the ASCII status character, highest-priority class first.
+    byte Resolve()
     {
-      return (byte)'$';
+      if (isGroupPasswordToAll) return (byte)'$';
+      if (isGroupPassword)      return (byte)(isRead ? '#' : '!');
+      if (isSenderPassword)     return (byte)(isRead ? '^' : '%');
+      if (isCommentToSysop)     return (byte)(isRead ? '`' : '~');
+      if (isPrivate)            return (byte)(isRead ? '+' : '*');
+                                return (byte)(isRead ? '-' : ' ');
     }
 
-    if (isGroupPassword)
-    {
-      return (byte)(isRead ? '#' : '!');
-    }
+    // Restore bit 7 if the network tag-line flag is set.
+    byte statusByte = Resolve();
+    if (hasNetworkTagLine)
+      statusByte |= 0x80;
 
-    if (isSenderPassword)
-    {
-      return (byte)(isRead ? '^' : '%');
-    }
-
-    if (isCommentToSysop)
-    {
-      return (byte)(isRead ? '`' : '~');
-    }
-
-    if (isPrivate)
-    {
-      return (byte)(isRead ? '+' : '*');
-    }
-
-    // Public message
-    return (byte)(isRead ? '-' : ' ');
+    return statusByte;
   }
 
   /// <summary>
