@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using QwkNet.Archive;
 using QwkNet.Archive.Zip;
 using QwkNet.Core;
@@ -138,8 +137,9 @@ public sealed class RepPacket : IDisposable
   /// Thrown when this instance has been disposed.
   /// </exception>
   /// <remarks>
-  /// Messages are added in the order they are provided. The message number
-  /// will be recalculated during packet generation to ensure sequential numbering.
+  /// Messages are added in the order they are provided. The ASCII message number
+  /// field (offsets 1–7) is set to the conference number during packet generation,
+  /// per the REP packet specification.
   /// </remarks>
   public void AddMessage(Message message)
   {
@@ -152,7 +152,7 @@ public sealed class RepPacket : IDisposable
 
     _messages.Add(message);
 
-    // Track messages by conference for index generation
+    // Track messages by conference for index generation.
     if (!_messagesByConference.ContainsKey(message.ConferenceNumber))
     {
       _messagesByConference[message.ConferenceNumber] = new List<Message>();
@@ -200,19 +200,19 @@ public sealed class RepPacket : IDisposable
 
     using (IArchiveWriter writer = new ZipArchiveWriter())
     {
-      // Generate CONTROL.DAT
+      // Generate CONTROL.DAT.
       using (Stream controlStream = GenerateControlDat())
       {
         writer.AddFile("CONTROL.DAT", controlStream);
       }
 
-      // Generate MESSAGES.DAT
+      // Generate MESSAGES.DAT.
       using (Stream messagesStream = GenerateMessagesDat())
       {
         writer.AddFile("MESSAGES.DAT", messagesStream);
       }
 
-      // Generate index files for each conference
+      // Generate index files for each conference.
       Dictionary<int, IndexFile> indexes = GenerateIndexes();
       foreach (KeyValuePair<int, IndexFile> kvp in indexes)
       {
@@ -229,7 +229,7 @@ public sealed class RepPacket : IDisposable
         }
       }
 
-      // Write the ZIP archive to the output stream
+      // Write the ZIP archive to the output stream.
       writer.Save(output);
     }
   }
@@ -268,7 +268,7 @@ public sealed class RepPacket : IDisposable
   /// A <see cref="MemoryStream"/> containing the CONTROL.DAT data.
   /// </returns>
   /// <remarks>
-  /// For REP packets, CONTROL.DAT typically contains only the BBS ID on the first line.
+  /// For REP packets, CONTROL.DAT contains only the BBS ID on the first line.
   /// This is the minimal valid CONTROL.DAT for a reply packet.
   /// </remarks>
   private Stream GenerateControlDat()
@@ -276,7 +276,7 @@ public sealed class RepPacket : IDisposable
     MemoryStream stream = new MemoryStream();
     StreamWriter writer = new StreamWriter(stream, Cp437Encoding.GetEncoding(), leaveOpen: true);
 
-    // REP CONTROL.DAT format: BBS ID on first line
+    // REP CONTROL.DAT format: BBS ID on first line only.
     writer.WriteLine(_bbsId);
     writer.Flush();
 
@@ -297,28 +297,31 @@ public sealed class RepPacket : IDisposable
   /// of body text, padded with spaces to fill the last block.
   /// </para>
   /// <para>
-  /// The first record (header) contains the BBS ID and copyright notice.
+  /// The first record (header) contains the BBS ID, space-padded to 128 bytes.
+  /// </para>
+  /// <para>
+  /// Per the REP packet specification, the ASCII message number field (offsets
+  /// 1–7) of each message header contains the conference number, not a
+  /// sequential index. The binary conference number at offsets 123–124 holds
+  /// the same value. Both fields are set here during serialisation.
   /// </para>
   /// </remarks>
   private Stream GenerateMessagesDat()
   {
     MemoryStream stream = new MemoryStream();
 
-    // Write MESSAGES.DAT header record
+    // Write MESSAGES.DAT header record (BBS ID, space-padded).
     WriteMessagesHeader(stream);
 
-    // Write each message
-    int recordOffset = 1; // Start at record 1 (after header)
+    // Write each message. Per the REP spec the message number field (offsets
+    // 1–7) must contain the conference number, not a sequential counter.
+    // Source: https://wmcbrine.com/mmail/specs/qwklay.html section 4.2.
+    int recordOffset = 1; // Start at record 1 (after header block).
 
-    for (int i = 0; i < _messages.Count; i++)
+    foreach (Message message in _messages)
     {
-      Message message = _messages[i];
-
-      // Recalculate message number for sequential numbering
-      int messageNumber = i + 1;
-
-      // Write message header and body
-      recordOffset = WriteMessage(stream, message, messageNumber, recordOffset);
+      int conferenceNumber = message.ConferenceNumber;
+      recordOffset = WriteMessage(stream, message, conferenceNumber, recordOffset);
     }
 
     stream.Position = 0;
@@ -332,24 +335,24 @@ public sealed class RepPacket : IDisposable
   /// The stream to write to.
   /// </param>
   /// <remarks>
-  /// The header record is a 128-byte block containing the BBS ID and copyright text.
+  /// The header record is a 128-byte block containing the BBS ID at the start,
+  /// with the remainder space-padded.
   /// </remarks>
   private void WriteMessagesHeader(Stream stream)
   {
     byte[] headerRecord = new byte[QwkRecordSize];
 
-    // Fill with spaces
+    // Fill with spaces.
     for (int i = 0; i < headerRecord.Length; i++)
     {
       headerRecord[i] = (byte)' ';
     }
 
-    // Write BBS ID at the start (using CP437 encoding)
+    // Write BBS ID at the start using CP437 encoding.
     byte[] bbsIdBytes = Cp437Encoding.Encode(_bbsId);
     int copyLength = Math.Min(bbsIdBytes.Length, headerRecord.Length);
     Array.Copy(bbsIdBytes, 0, headerRecord, 0, copyLength);
 
-    // Write the header record
     stream.Write(headerRecord, 0, headerRecord.Length);
   }
 
@@ -363,7 +366,8 @@ public sealed class RepPacket : IDisposable
   /// The message to write.
   /// </param>
   /// <param name="messageNumber">
-  /// The sequential message number.
+  /// The value to write into the ASCII message number field (offsets 1–7).
+  /// For REP packets this is always the conference number.
   /// </param>
   /// <param name="recordOffset">
   /// The current record offset in MESSAGES.DAT.
@@ -373,27 +377,25 @@ public sealed class RepPacket : IDisposable
   /// </returns>
   private int WriteMessage(Stream stream, Message message, int messageNumber, int recordOffset)
   {
-    // Build the message header with corrected block count
+    // Build the message header with the correct message number and block count.
     byte[] headerBytes = BuildMessageHeader(message, messageNumber);
 
-    // Get the message body text properly encoded for QWK format
-    // Use GetEncodedText() which rejoins lines with π (0xE3) terminators
+    // Get the message body text encoded for QWK format (lines joined with
+    // 0xE3 soft-CR terminators).
     string bodyText = message.Body.GetEncodedText();
 
-    // Calculate block count (number of 128-byte blocks needed for the body)
+    // Calculate block count (number of 128-byte blocks needed for the body).
     int bodyBlockCount = CalculateBlockCount(bodyText);
 
-    // Update block count in header (bytes 116-121)
-    // Per QWK specification: this field is "number of 128 byte blocks INCLUDING
-    // 1 for the message header" - so we write bodyBlockCount + 1
+    // Per QWK specification, the block count field (offsets 116–121) holds
+    // the total number of 128-byte blocks INCLUDING the header block itself.
     int totalBlockCount = bodyBlockCount + 1;
     WriteBlockCount(headerBytes, totalBlockCount);
 
-    // Write message header
+    // Write message header then body blocks.
     stream.Write(headerBytes, 0, headerBytes.Length);
     recordOffset++;
 
-    // Write message body blocks
     WriteMessageBody(stream, bodyText, bodyBlockCount);
     recordOffset += bodyBlockCount;
 
@@ -401,37 +403,42 @@ public sealed class RepPacket : IDisposable
   }
 
   /// <summary>
-  /// Builds a message header byte array.
+  /// Builds a 128-byte message header array.
   /// </summary>
   /// <param name="message">
   /// The message to build a header for.
   /// </param>
   /// <param name="messageNumber">
-  /// The sequential message number.
+  /// The value to write into the ASCII message number field (offsets 1–7).
+  /// For REP packets this is the conference number.
   /// </param>
   /// <returns>
   /// A 128-byte array containing the message header.
   /// </returns>
   /// <remarks>
-  /// The raw header is used as the base to preserve fields not modelled explicitly.
-  /// The status byte (offset 0) and message number (offsets 1–7) are always
-  /// recalculated from the message model to ensure consistency.
+  /// The raw header bytes from the message model are used as a base so that
+  /// any fields not explicitly modelled are preserved. The status byte (offset 0)
+  /// and message number field (offsets 1–7) are always recalculated from the
+  /// message model to ensure they are consistent and correct for the REP format.
   /// </remarks>
   private static byte[] BuildMessageHeader(Message message, int messageNumber)
   {
     byte[] headerBytes = new byte[QwkRecordSize];
 
-    // Use the raw header as a base to preserve any fields not modelled explicitly.
+    // Use the raw header as a base to preserve fields not modelled explicitly.
     byte[] rawHeaderBytes = message.RawHeader.RawHeader;
     Array.Copy(rawHeaderBytes, 0, headerBytes, 0, QwkRecordSize);
 
-    // Recalculate status byte (offset 0) from the message model — the raw header
-    // may be stale if Status has been modified since the message was parsed.
+    // Recalculate status byte (offset 0) from the message model — the raw
+    // header may be stale if Status has been modified since parsing.
     headerBytes[0] = ConvertStatusToQwkByte(message.Status);
 
-    // Recalculate message number (offsets 1–7) for sequential numbering.
+    // Write the message number field (offsets 1–7), clearing it first.
+    // For REP packets this field holds the conference number per the spec.
     for (int i = 1; i < 8; i++)
+    {
       headerBytes[i] = (byte)' ';
+    }
 
     WriteAsciiField(headerBytes, 1, messageNumber.ToString(), 7);
 
@@ -467,28 +474,30 @@ public sealed class RepPacket : IDisposable
                                 return (byte)(isRead ? '-' : ' ');
     }
 
-    // Restore bit 7 if the network tag-line flag is set.
+    // Set bit 7 if the network tag-line flag is present.
     byte statusByte = Resolve();
     if (hasNetworkTagLine)
+    {
       statusByte |= 0x80;
+    }
 
     return statusByte;
   }
 
   /// <summary>
-  /// Writes an ASCII field to the header byte array.
+  /// Writes an ASCII field into a header byte array.
   /// </summary>
   /// <param name="headerBytes">
-  /// The header byte array.
+  /// The header byte array to write into.
   /// </param>
   /// <param name="offset">
-  /// The starting offset (0-based).
+  /// The starting offset within <paramref name="headerBytes"/> (0-based).
   /// </param>
   /// <param name="value">
-  /// The value to write.
+  /// The string value to write.
   /// </param>
   /// <param name="maxLength">
-  /// The maximum field length.
+  /// The maximum number of bytes to write.
   /// </param>
   private static void WriteAsciiField(byte[] headerBytes, int offset, string value, int maxLength)
   {
@@ -497,10 +506,8 @@ public sealed class RepPacket : IDisposable
       return;
     }
 
-    // Truncate if necessary
     string truncated = value.Length > maxLength ? value.Substring(0, maxLength) : value;
 
-    // Write bytes using CP437 encoding
     byte[] valueBytes = Cp437Encoding.Encode(truncated);
     Array.Copy(valueBytes, 0, headerBytes, offset, valueBytes.Length);
   }
@@ -512,117 +519,110 @@ public sealed class RepPacket : IDisposable
   /// The message body text.
   /// </param>
   /// <returns>
-  /// The number of blocks needed.
+  /// The number of 128-byte blocks required, minimum 1.
   /// </returns>
   private static int CalculateBlockCount(string bodyText)
   {
     if (string.IsNullOrEmpty(bodyText))
     {
-      return 1; // Minimum 1 block
+      return 1;
     }
 
-    // Use CP437 encoding to calculate byte count
     byte[] encoded = Cp437Encoding.Encode(bodyText);
-    int byteCount = encoded.Length;
-    int blockCount = (byteCount + QwkRecordSize - 1) / QwkRecordSize;
+    int blockCount = (encoded.Length + QwkRecordSize - 1) / QwkRecordSize;
 
     return Math.Max(1, blockCount);
   }
 
   /// <summary>
-  /// Writes the block count to the message header.
+  /// Writes the block count into the message header at offsets 116–121.
   /// </summary>
   /// <param name="headerBytes">
-  /// The header byte array.
+  /// The header byte array to write into.
   /// </param>
   /// <param name="blockCount">
-  /// The block count to write.
+  /// The total block count (header block + body blocks) to write.
   /// </param>
   private static void WriteBlockCount(byte[] headerBytes, int blockCount)
   {
-    // Block count is at bytes 116-121 (6 bytes, ASCII)
+    // Block count field: offsets 116–121 (6 bytes, ASCII, right-justified).
     string blockCountStr = blockCount.ToString().PadLeft(6);
     WriteAsciiField(headerBytes, 116, blockCountStr, 6);
   }
 
   /// <summary>
-  /// Writes the message body to the stream.
+  /// Writes padded message body blocks to the stream.
   /// </summary>
   /// <param name="stream">
   /// The stream to write to.
   /// </param>
   /// <param name="bodyText">
-  /// The message body text.
+  /// The message body text encoded with 0xE3 line terminators.
   /// </param>
   /// <param name="blockCount">
-  /// The number of blocks to write.
+  /// The number of 128-byte blocks to write.
   /// </param>
   private static void WriteMessageBody(Stream stream, string bodyText, int blockCount)
   {
-    // Use CP437 encoding for body text
     byte[] bodyBytes = Cp437Encoding.Encode(bodyText ?? string.Empty);
     int totalSize = blockCount * QwkRecordSize;
 
-    // Create padded buffer
     byte[] paddedBuffer = new byte[totalSize];
 
-    // Fill with spaces
+    // Fill with spaces, then overlay the body bytes.
     for (int i = 0; i < paddedBuffer.Length; i++)
     {
       paddedBuffer[i] = (byte)' ';
     }
 
-    // Copy body bytes
     int copyLength = Math.Min(bodyBytes.Length, paddedBuffer.Length);
     Array.Copy(bodyBytes, 0, paddedBuffer, 0, copyLength);
 
-    // Write to stream
     stream.Write(paddedBuffer, 0, paddedBuffer.Length);
   }
 
   /// <summary>
-  /// Generates index files for all conferences in this REP packet.
+  /// Generates NDX index files for all conferences present in this REP packet.
   /// </summary>
   /// <returns>
-  /// A dictionary mapping conference numbers to their index files.
+  /// A dictionary mapping conference number to its <see cref="IndexFile"/>.
   /// </returns>
+  /// <remarks>
+  /// Each NDX entry is a 4-byte MSBIN float encoding the 128-byte record offset
+  /// of the message header within MESSAGES.DAT (record 0 being the ID block).
+  /// </remarks>
   private Dictionary<int, IndexFile> GenerateIndexes()
   {
     Dictionary<int, IndexFile> indexes = new Dictionary<int, IndexFile>();
     Dictionary<int, List<IndexEntry>> entriesByConference = new Dictionary<int, List<IndexEntry>>();
 
-    // Build indexes by conference
-    int globalRecordOffset = 1; // Start at record 1 (after MESSAGES.DAT header)
+    // Start at record 1 — record 0 is the MESSAGES.DAT ID block.
+    int globalRecordOffset = 1;
 
     foreach (Message message in _messages)
     {
       int conferenceNumber = message.ConferenceNumber;
 
-      // Initialise conference tracking if needed
       if (!entriesByConference.ContainsKey(conferenceNumber))
       {
         entriesByConference[conferenceNumber] = new List<IndexEntry>();
       }
 
-      // Calculate block count for this message body
-      // Use GetEncodedText() for consistency with WriteMessage
+      // Use GetEncodedText() for consistency with WriteMessage body encoding.
       int bodyBlockCount = CalculateBlockCount(message.Body.GetEncodedText());
 
-      // Get the entry list for this conference
       List<IndexEntry> entries = entriesByConference[conferenceNumber];
 
-      // Create index entry
-      int messageNumber = entries.Count + 1;
+      int entryMessageNumber = entries.Count + 1;
       byte[] msbinBytes = MsbinConverter.FromDouble((double)globalRecordOffset);
-      IndexEntry entry = new IndexEntry(messageNumber, globalRecordOffset, msbinBytes);
+      IndexEntry entry = new IndexEntry(entryMessageNumber, globalRecordOffset, msbinBytes);
 
       entries.Add(entry);
 
-      // Advance record offset (1 header + N body blocks)
+      // Advance past this message: 1 header block + N body blocks.
       globalRecordOffset += (1 + bodyBlockCount);
     }
 
-    // Convert lists to IndexFile instances
     foreach (KeyValuePair<int, List<IndexEntry>> kvp in entriesByConference)
     {
       int conferenceNumber = kvp.Key;

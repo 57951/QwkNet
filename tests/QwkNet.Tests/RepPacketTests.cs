@@ -558,43 +558,46 @@ public sealed class RepPacketTests
   }
 
   [Fact]
-  public void Save_MessageNumbersSequential()
+  public void Save_MessageNumberField_ContainsConferenceNumber()
   {
-    // Arrange
+    // Per the REP packet specification, the ASCII message number field (offsets
+    // 1–7) must contain the conference number, not a sequential index.
+    // Source: https://wmcbrine.com/mmail/specs/qwklay.html section 4.2.
+    //
+    // Arrange — three messages across two different conferences.
     using RepPacket packet = RepPacket.Create("TESTBBS");
-    packet.AddMessage(CreateTestMessage(100, 1, "Message 1")); // Original number 100
-    packet.AddMessage(CreateTestMessage(200, 1, "Message 2")); // Original number 200
-    packet.AddMessage(CreateTestMessage(300, 1, "Message 3")); // Original number 300
+    packet.AddMessage(CreateTestMessage(100, 1,  "Conference 1 message A"));
+    packet.AddMessage(CreateTestMessage(200, 5,  "Conference 5 message A"));
+    packet.AddMessage(CreateTestMessage(300, 1,  "Conference 1 message B"));
 
     using MemoryStream output = new MemoryStream();
     packet.Save(output);
 
-    // Act
+    // Act — read the ASCII message number field from each message header.
     output.Position = 0;
     using IArchiveReader reader = new ZipArchiveReader(output);
     using Stream messagesStream = reader.OpenFile("MESSAGES.DAT");
 
-    List<int> messageNumbers = new List<int>();
+    List<int> messageNumberFields = new List<int>();
 
-    // Skip header record
+    // Skip the MESSAGES.DAT ID block (record 0).
     SkipBytes(messagesStream, 128);
 
+    // Each message is 1 header block + 1 body block for these short bodies.
     for (int i = 0; i < 3; i++)
     {
-      // Read message header
       byte[] messageHeader = ReadExactly(messagesStream, 128);
 
-      // Parse message number (bytes 1-7)
       string msgNumStr = System.Text.Encoding.ASCII.GetString(messageHeader, 1, 7).Trim();
       int msgNum = int.Parse(msgNumStr);
-      messageNumbers.Add(msgNum);
+      messageNumberFields.Add(msgNum);
 
-      // Skip body blocks (assuming 1 block each for short messages)
+      // Skip body block.
       SkipBytes(messagesStream, 128);
     }
 
-    // Assert
-    Assert.Equal(new[] { 1, 2, 3 }, messageNumbers);
+    // Assert — each field must equal the conference number of that message.
+    Assert.Equal(new[] { 1, 5, 1 }, messageNumberFields);
   }
 
   [Fact]

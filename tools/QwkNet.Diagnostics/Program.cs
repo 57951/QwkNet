@@ -96,7 +96,7 @@ internal static class Program
     Console.WriteLine("  --verbose                        Show detailed output");
     Console.WriteLine("  --benchmark                      Include performance benchmarks");
     Console.WriteLine("  --memory                         Include memory profiling");
-    Console.WriteLine("  --roundtrip                      Perform round-trip validation (readÃ¢â€ â€™writeÃ¢â€ â€™readÃ¢â€ â€™compare)");
+    Console.WriteLine("  --roundtrip                      Perform round-trip validation (read/write/read/compare)");
     Console.WriteLine("  --inventory                      Show complete archive file inventory");
     Console.WriteLine();
     Console.WriteLine("BATCH OPTIONS:");
