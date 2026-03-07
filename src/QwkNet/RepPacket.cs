@@ -37,8 +37,9 @@ public sealed class RepPacket : IDisposable
   /// Gets the BBS identifier for this REP packet.
   /// </summary>
   /// <remarks>
-  /// This is used to name the REP file (e.g., MYBBS.REP) and appears in the
-  /// first line of CONTROL.DAT.
+  /// Always uppercase. Used to name the message payload within the archive
+  /// (e.g., <c>MYBBS.MSG</c>), the outer REP file (e.g., <c>MYBBS.REP</c>),
+  /// and appears in the first line of CONTROL.DAT.
   /// </remarks>
   public string BbsId => _bbsId;
 
@@ -51,13 +52,16 @@ public sealed class RepPacket : IDisposable
   /// Initialises a new instance of the <see cref="RepPacket"/> class.
   /// </summary>
   /// <param name="bbsId">
-  /// The BBS identifier (1-8 characters, typically uppercase).
+  /// The BBS identifier (1-8 characters). Normalised to uppercase on construction
+  /// (e.g. <c>"dmine"</c> is stored as <c>"DMINE"</c>). Allowed characters are
+  /// ASCII letters A-Z (case-insensitive) and digits 0-9.
   /// </param>
   /// <exception cref="ArgumentNullException">
   /// Thrown when <paramref name="bbsId"/> is <see langword="null"/>.
   /// </exception>
   /// <exception cref="ArgumentException">
-  /// Thrown when <paramref name="bbsId"/> is empty, whitespace, or exceeds 8 characters.
+  /// Thrown when <paramref name="bbsId"/> is empty, whitespace, exceeds 8 characters,
+  /// or contains characters other than ASCII letters and digits.
   /// </exception>
   private RepPacket(string bbsId)
   {
@@ -71,12 +75,24 @@ public sealed class RepPacket : IDisposable
       throw new ArgumentException("BBS ID cannot be empty or whitespace.", nameof(bbsId));
     }
 
-    if (bbsId.Length > 8)
+    // Normalise to uppercase so callers can pass "dmine" and get "DMINE".
+    string normalizedId = bbsId.ToUpperInvariant();
+
+    if (normalizedId.Length > 8)
     {
       throw new ArgumentException("BBS ID cannot exceed 8 characters.", nameof(bbsId));
     }
 
-    _bbsId = bbsId;
+    foreach (char c in normalizedId)
+    {
+      if ((c < 'A' || c > 'Z') && (c < '0' || c > '9'))
+      {
+        throw new ArgumentException(
+          "BBS ID may only contain ASCII letters (A-Z) and digits (0-9).", nameof(bbsId));
+      }
+    }
+
+    _bbsId = normalizedId;
     _messages = new List<Message>();
     _messagesByConference = new Dictionary<ushort, List<Message>>();
     _disposed = false;
@@ -180,7 +196,7 @@ public sealed class RepPacket : IDisposable
   /// This method generates a complete REP packet as a ZIP archive containing:
   /// <list type="bullet">
   /// <item><description>CONTROL.DAT - BBS identifier line</description></item>
-  /// <item><description>MESSAGES.DAT - All messages with proper padding</description></item>
+  /// <item><description>BBSID.MSG - All messages with proper padding (e.g., <c>DMINE.MSG</c>)</description></item>
   /// <item><description>N.NDX files - Index files for each conference</description></item>
   /// </list>
   /// </remarks>
@@ -206,10 +222,11 @@ public sealed class RepPacket : IDisposable
         writer.AddFile("CONTROL.DAT", controlStream);
       }
 
-      // Generate MESSAGES.DAT.
+      // Generate BBSID.MSG — BBS servers identify the reply payload by this
+      // name; a generic MESSAGES.DAT would be silently dropped by most servers.
       using (Stream messagesStream = GenerateMessagesDat())
       {
-        writer.AddFile("MESSAGES.DAT", messagesStream);
+        writer.AddFile($"{_bbsId}.MSG", messagesStream);
       }
 
       // Generate index files for each conference.

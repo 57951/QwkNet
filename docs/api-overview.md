@@ -75,11 +75,16 @@ The entry point for creating reply packets (REP format):
 ```csharp
 using QwkNet;
 
+// Create from QWK control data — BBS ID is taken from the original packet.
 RepPacket rep = RepPacket.Create(packet.Control);
 rep.AddMessage(message);
-using var output = File.Create("REPLY.REP");
+using var output = File.Create($"{rep.BbsId}.REP");
 rep.Save(output);
 ```
+
+The archive written by `Save()` contains `BBSID.MSG` (e.g., `DMINE.MSG`) as the message
+payload — not a generic `MESSAGES.DAT`. BBS servers use this name to identify and accept
+the upload; a packet with the wrong name is silently dropped.
 
 ## Typical Workflows
 
@@ -140,7 +145,8 @@ Build a REP packet from messages:
 ```csharp
 using QwkNet;
 
-// Create reply packet using control data from original
+// Create reply packet using control data from original.
+// BbsId is normalised to uppercase automatically (e.g. "dmine" → "DMINE").
 RepPacket rep = RepPacket.Create(originalPacket.Control);
 
 // Build and add messages
@@ -153,8 +159,9 @@ Message reply = builder.Build();
 
 rep.AddMessage(reply);
 
-// Save to file
-using var output = File.Create("REPLY.REP");
+// Save to file — name the outer archive after the BBS ID, e.g. DMINE.REP.
+// Inside the archive the message payload is DMINE.MSG (not MESSAGES.DAT).
+using var output = File.Create($"{rep.BbsId}.REP");
 rep.Save(output);
 ```
 

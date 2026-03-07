@@ -164,7 +164,7 @@ public sealed class RepPacketTests
     IReadOnlyList<string> files = reader.ListFiles();
 
     Assert.Contains("CONTROL.DAT", files);
-    Assert.Contains("MESSAGES.DAT", files);
+    Assert.Contains("TESTBBS.MSG", files);
   }
 
   [Fact]
@@ -189,7 +189,7 @@ public sealed class RepPacketTests
     IReadOnlyList<string> files = reader.ListFiles();
 
     Assert.Contains("CONTROL.DAT", files);
-    Assert.Contains("MESSAGES.DAT", files);
+    Assert.Contains("TESTBBS.MSG", files);
     Assert.Contains("1.NDX", files); // Conference 1 index
   }
 
@@ -249,7 +249,7 @@ public sealed class RepPacketTests
     // Act
     output.Position = 0;
     using IArchiveReader reader = new ZipArchiveReader(output);
-    using Stream messagesStream = reader.OpenFile("MESSAGES.DAT");
+    using Stream messagesStream = reader.OpenFile("TESTBBS.MSG");
     byte[] headerRecord = new byte[128];
     int totalRead = 0;
     while (totalRead < 128)
@@ -284,7 +284,7 @@ public sealed class RepPacketTests
     // Act
     output.Position = 0;
     using IArchiveReader reader = new ZipArchiveReader(output);
-    using Stream messagesStream = reader.OpenFile("MESSAGES.DAT");
+    using Stream messagesStream = reader.OpenFile("TESTBBS.MSG");
 
     // Skip header record
     SkipBytes(messagesStream, 128);
@@ -384,7 +384,7 @@ public sealed class RepPacketTests
       using IArchiveReader reader = new ZipArchiveReader(fs);
       IReadOnlyList<string> files = reader.ListFiles();
       Assert.Contains("CONTROL.DAT", files);
-      Assert.Contains("MESSAGES.DAT", files);
+      Assert.Contains("TESTBBS.MSG", files);
     }
     finally
     {
@@ -466,7 +466,7 @@ public sealed class RepPacketTests
     // Act
     output.Position = 0;
     using IArchiveReader reader = new ZipArchiveReader(output);
-    using Stream messagesStream = reader.OpenFile("MESSAGES.DAT");
+    using Stream messagesStream = reader.OpenFile("TESTBBS.MSG");
 
     // Skip header record and message header
     SkipBytes(messagesStream, 256); // 128 (header) + 128 (message header)
@@ -502,7 +502,7 @@ public sealed class RepPacketTests
     // Act
     output.Position = 0;
     using IArchiveReader reader = new ZipArchiveReader(output);
-    using Stream messagesStream = reader.OpenFile("MESSAGES.DAT");
+    using Stream messagesStream = reader.OpenFile("TESTBBS.MSG");
 
     // Skip header record and message header
     SkipBytes(messagesStream, 256);
@@ -538,7 +538,7 @@ public sealed class RepPacketTests
     // Act
     output.Position = 0;
     using IArchiveReader reader = new ZipArchiveReader(output);
-    using Stream messagesStream = reader.OpenFile("MESSAGES.DAT");
+    using Stream messagesStream = reader.OpenFile("TESTBBS.MSG");
 
     // Skip header record
     SkipBytes(messagesStream, 128);
@@ -576,11 +576,11 @@ public sealed class RepPacketTests
     // Act — read the ASCII message number field from each message header.
     output.Position = 0;
     using IArchiveReader reader = new ZipArchiveReader(output);
-    using Stream messagesStream = reader.OpenFile("MESSAGES.DAT");
+    using Stream messagesStream = reader.OpenFile("TESTBBS.MSG");
 
     List<int> messageNumberFields = new List<int>();
 
-    // Skip the MESSAGES.DAT ID block (record 0).
+    // Skip the BBSID.MSG ID block (record 0).
     SkipBytes(messagesStream, 128);
 
     // Each message is 1 header block + 1 body block for these short bodies.
@@ -610,6 +610,47 @@ public sealed class RepPacketTests
     packet.Dispose();
     packet.Dispose();
     packet.Dispose();
+  }
+
+  [Fact]
+  public void Create_WithLowercaseBbsId_NormalizesToUppercase()
+  {
+    // Act
+    using RepPacket packet = RepPacket.Create("testbbs");
+
+    // Assert
+    Assert.Equal("TESTBBS", packet.BbsId);
+  }
+
+  [Fact]
+  public void Save_ArchiveContainsBbsIdMsgEntry()
+  {
+    // The reply message file must be named BBSID.MSG, not MESSAGES.DAT.
+    // BBS servers reject packets that use the generic MESSAGES.DAT name.
+
+    // Arrange — lowercase input to also verify normalization flows through.
+    using RepPacket packet = RepPacket.Create("dmine");
+    using MemoryStream output = new MemoryStream();
+
+    // Act
+    packet.Save(output);
+
+    // Assert
+    output.Position = 0;
+    using IArchiveReader reader = new ZipArchiveReader(output);
+    IReadOnlyList<string> files = reader.ListFiles();
+
+    Assert.Contains("DMINE.MSG", files);
+    Assert.DoesNotContain("MESSAGES.DAT", files);
+  }
+
+  [Fact]
+  public void Create_WithInvalidCharactersInBbsId_ThrowsArgumentException()
+  {
+    // Path separators, spaces, and punctuation are rejected after normalisation.
+    Assert.Throws<ArgumentException>(() => RepPacket.Create("BAD/ID"));
+    Assert.Throws<ArgumentException>(() => RepPacket.Create("MY BBS"));
+    Assert.Throws<ArgumentException>(() => RepPacket.Create("BBS!01"));
   }
 
   // Helper methods

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.0] - 2026-03-07
+
+### Fixed
+
+- **Critical: REP packets were silently dropped by BBS servers due to incorrect message payload filename.**
+  The message payload inside a REP archive must be named `BBSID.MSG` (e.g., `DMINE.MSG`). The library was previously writing it as the generic `MESSAGES.DAT`, which BBS servers do not recognise as a valid reply upload and discard without error.
+
+### Changed
+
+- `RepPacket.Save()` now writes the message payload as `BBSID.MSG` (e.g., `DMINE.MSG`, `AMIGACTY.MSG`) instead of `MESSAGES.DAT`. Callers naming the outer archive should also use `BBSID.REP` — `rep.BbsId` exposes the normalised identifier for this purpose.
+- `RepPacket.BbsId` is now always uppercase. The BBS identifier is normalised to uppercase on construction (e.g., `"dmine"` is stored and returned as `"DMINE"`), ensuring the generated archive entry name is always correct.
+- `RepPacket.Create()` now validates that the BBS identifier contains only ASCII letters and digits (`A–Z`, `0–9`) after normalisation. Spaces, punctuation, and path separators throw `ArgumentException` immediately at construction time rather than producing an unusable archive at save time.
+
+---
+
 ## [1.4.0] - 2026-03-07
 
 ### Fixed

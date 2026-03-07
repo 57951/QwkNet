@@ -123,7 +123,7 @@ public static class RepPacketExamples
     Console.WriteLine($"Created MYBBS.REP with {rep.Messages.Count} messages across multiple conferences");
     Console.WriteLine("The packet will contain:");
     Console.WriteLine("  - CONTROL.DAT");
-    Console.WriteLine("  - MESSAGES.DAT");
+    Console.WriteLine("  - MYBBS.MSG");
     Console.WriteLine("  - 1.NDX (conference 1 index)");
     Console.WriteLine("  - 5.NDX (conference 5 index)");
   }
@@ -168,7 +168,7 @@ extensive multi-paragraph replies like this one.";
     rep.SaveToFile("MYBBS.REP");
 
     Console.WriteLine($"Created MYBBS.REP with a long message ({longMessage.Length} bytes)");
-    Console.WriteLine($"Message will span multiple 128-byte blocks in MESSAGES.DAT");
+    Console.WriteLine($"Message will span multiple 128-byte blocks in MYBBS.MSG");
   }
 
   /// <summary>

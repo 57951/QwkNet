@@ -40,6 +40,48 @@ The process of creating a REP packet follows these steps:
 
 The library handles encoding, message ordering, index file generation, and format compliance automatically. You focus on creating the message content, and QWK.NET ensures the output is valid.
 
+## BBS Identifier and Archive Naming
+
+Every REP packet is tied to the BBS it was downloaded from via the **BBS identifier** (BBS ID). The BBS ID drives two naming conventions that BBS servers rely on:
+
+| File | Purpose |
+|------|---------|
+| `BBSID.REP` | The outer archive file (e.g., `DMINE.REP`) |
+| `BBSID.MSG` | The message payload *inside* the archive (e.g., `DMINE.MSG`) |
+
+BBS servers identify the correct reply upload by looking for `BBSID.MSG` inside the archive. A packet containing only a generic `MESSAGES.DAT` is not recognised and will typically be silently dropped.
+
+### Obtaining the BBS ID
+
+The recommended approach is to pass the `ControlDat` from the original QWK packet directly to `RepPacket.Create`. The BBS ID is then taken automatically from the packet's control data:
+
+```csharp
+using QwkPacket qwk = QwkPacket.Open("DMINE.QWK");
+
+// BBS ID comes from the original packet — always correct.
+using RepPacket rep = RepPacket.Create(qwk.Control);
+rep.AddMessage(reply);
+
+// Name the outer archive after the BBS ID as well.
+rep.SaveToFile($"{rep.BbsId}.REP"); // → DMINE.REP
+```
+
+If you are creating a REP packet without a QWK source, supply the BBS ID explicitly:
+
+```csharp
+using RepPacket rep = RepPacket.Create("DMINE");
+```
+
+### BBS ID Rules
+
+The BBS ID must satisfy the following requirements:
+
+- **Characters**: ASCII letters (A–Z) and digits (0–9) only.
+- **Length**: 1–8 characters.
+- **Case**: Automatically normalised to uppercase. Passing `"dmine"` is equivalent to passing `"DMINE"`.
+
+`RepPacket.Create` throws `ArgumentException` immediately if the ID is null, empty, whitespace, too long, or contains disallowed characters (spaces, punctuation, path separators, etc.).
+
 ## Common Considerations
 
 ### Message Ordering
@@ -93,6 +135,12 @@ QWK.NET preserves byte-level fidelity when writing packets. Given the same input
 
 **Index file concerns:**
 - You don't need to manually create index files. The library generates them automatically with correct offsets.
+
+**Incorrect outer archive name:**
+- Name the `.REP` file after the BBS ID (e.g., `DMINE.REP`). The inner message payload is always `BBSID.MSG` and is generated automatically by `Save()`. Do not attempt to rename or replace this entry manually.
+
+**Using the wrong BBS ID:**
+- Always create the `RepPacket` from `qwk.Control` when replying to a downloaded packet. Using a hardcoded or guessed BBS ID risks a mismatch that will cause the BBS server to reject the upload.
 
 ## Further Reading
 
