@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] - 2026-03-07
+
+### Fixed
+
+- `RepPacket`: The ASCII message number field (offsets 1–7) in generated REP packets now correctly contains the conference number, per the QWK specification. Previously this field was populated with a sequential counter, which could cause mail doors to silently reject or misroute uploaded replies.
+
+---
+
 ## [1.3.2] - 2026-03-07
 
 ### Added
