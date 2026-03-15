@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 
 namespace QwkNet.Models.Control;
@@ -20,16 +19,33 @@ namespace QwkNet.Models.Control;
 /// </para>
 /// <para>
 /// This model preserves all raw entries to support door-specific extensions beyond
-/// the standard specification.
+/// the standard specification. The <see cref="ControlTypes"/> list retains the raw
+/// value of every CONTROLTYPE line in document order, including any non-standard
+/// values that map to <see cref="DoorCapability.Unknown"/>.
 /// </para>
 /// </remarks>
+/// <param name="DoorName">The name of the mail door software.</param>
+/// <param name="Version">The version string of the mail door software.</param>
+/// <param name="SystemType">The BBS system type, or <see langword="null"/> if not specified.</param>
+/// <param name="ControlName">The control name used for addressing control messages, or <see langword="null"/> if not specified.</param>
+/// <param name="Capabilities">The set of capabilities advertised by the door.</param>
+/// <param name="RawEntries">
+/// All raw key-value entries from the DOOR.ID file. For keys that appear more than once
+/// (such as CONTROLTYPE), only the first occurrence is stored here.
+/// </param>
+/// <param name="ControlTypes">
+/// The raw string value of every CONTROLTYPE line, in order of appearance.
+/// Preserves original casing and includes any non-standard values not covered by
+/// <see cref="DoorCapability"/>.
+/// </param>
 public sealed record DoorId(
   string DoorName,
   string Version,
   string? SystemType,
   string? ControlName,
   IReadOnlySet<DoorCapability> Capabilities,
-  IReadOnlyDictionary<string, string> RawEntries)
+  IReadOnlyDictionary<string, string> RawEntries,
+  IReadOnlyList<string> ControlTypes)
 {
   /// <summary>
   /// Returns a string representation of this DOOR.ID file.

@@ -80,6 +80,10 @@ internal sealed class MarkdownOutputFormatter : IOutputFormatter
     if (!string.IsNullOrEmpty(result.DoorId))
     {
       md.AppendLine($"- **Door ID:** {result.DoorId}");
+      if (result.DoorCapabilities.Count > 0)
+      {
+        md.AppendLine($"- **Door Capabilities:** {string.Join(", ", result.DoorCapabilities)}");
+      }
     }
     md.AppendLine();
 
@@ -113,6 +117,18 @@ internal sealed class MarkdownOutputFormatter : IOutputFormatter
       md.AppendLine("## Optional Files");
       md.AppendLine();
       foreach (string file in result.OptionalFiles)
+      {
+        md.AppendLine($"- `{file}`");
+      }
+      md.AppendLine();
+    }
+
+    // Additional (non-standard) archive files
+    if (result.UnknownFiles.Count > 0)
+    {
+      md.AppendLine("## Additional Files");
+      md.AppendLine();
+      foreach (string file in result.UnknownFiles)
       {
         md.AppendLine($"- `{file}`");
       }

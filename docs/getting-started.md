@@ -21,9 +21,15 @@ This should show version 10.x.x or later.
 
 ## Installation
 
-QWK.NET will be available via NuGet once packaging is complete. The core library package will be `QwkNet`. Installation instructions will be provided when the package is published.
+Install the `QwkNet` package from NuGet:
 
-For now, you can build from source. See [building.md](building.md) for instructions.
+```bash
+dotnet add package QwkNet
+```
+
+Or search for `QwkNet` in the NuGet Package Manager in Visual Studio.
+
+The package is available at [nuget.org/packages/QwkNet](https://www.nuget.org/packages/QwkNet).
 
 ## Minimal Workflow
 

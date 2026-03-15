@@ -122,7 +122,16 @@ internal sealed class PacketAnalyser
         result.DoorId = packet.DoorId.DoorName;
         result.DoorVersion = packet.DoorId.Version;
         result.DoorSystem = packet.DoorId.SystemType;
+
+        result.DoorCapabilities = new List<string>();
+        foreach (DoorCapability capability in packet.DoorId.Capabilities)
+        {
+          result.DoorCapabilities.Add(capability.ToString());
+        }
       }
+
+      // Collect non-standard archive files
+      result.UnknownFiles = new List<string>(packet.UnknownFiles);
 
       // CP437 encoding analysis
       result.Cp437Analysis = AnalyseCp437Content(packet);
@@ -482,6 +491,8 @@ internal sealed class AnalysisResult
   public string? DoorId { get; set; }
   public string? DoorVersion { get; set; }
   public string? DoorSystem { get; set; }
+  public List<string> DoorCapabilities { get; set; } = new List<string>();
+  public List<string> UnknownFiles { get; set; } = new List<string>();
 
   public int MessageCount { get; set; }
   public int ConferenceCount { get; set; }

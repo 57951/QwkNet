@@ -85,6 +85,19 @@ internal sealed class JsonOutputFormatter : IOutputFormatter
       if (!string.IsNullOrEmpty(result.DoorId))
       {
         json.Append($"\"doorId\":\"{EscapeJson(result.DoorId)}\",");
+        if (result.DoorCapabilities.Count > 0)
+        {
+          json.Append("\"doorCapabilities\":[");
+          for (int i = 0; i < result.DoorCapabilities.Count; i++)
+          {
+            json.Append($"\"{EscapeJson(result.DoorCapabilities[i])}\"");
+            if (i < result.DoorCapabilities.Count - 1)
+            {
+              json.Append(",");
+            }
+          }
+          json.Append("],");
+        }
       }
 
       // Message stats
@@ -117,6 +130,18 @@ internal sealed class JsonOutputFormatter : IOutputFormatter
       {
         json.Append($"\"{EscapeJson(result.OptionalFiles[i])}\"");
         if (i < result.OptionalFiles.Count - 1)
+        {
+          json.Append(",");
+        }
+      }
+      json.Append("],");
+
+      // Unknown (non-standard) archive files
+      json.Append("\"unknownFiles\":[");
+      for (int i = 0; i < result.UnknownFiles.Count; i++)
+      {
+        json.Append($"\"{EscapeJson(result.UnknownFiles[i])}\"");
+        if (i < result.UnknownFiles.Count - 1)
         {
           json.Append(",");
         }

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.0] - 2026-03-15
+
+### Added
+
+- **`QwkPacket.UnknownFiles`** (`IReadOnlyList<string>`) — exposes the names of every file in the packet archive that the library does not recognise as a standard QWK or QWKE entry (`MESSAGES.DAT`, `CONTROL.DAT`, `DOOR.ID`, `TOREADER.EXT`, `TODOOR.EXT`, `WELCOME`, `NEWS`, `GOODBYE`). The list is populated during `Open()` and is empty when all files are known. Comparison is case-insensitive.
+
+- **`QwkPacket.OpenFile(string name)`** (`Stream?`) — opens a raw, caller-owned byte stream for any file in the archive by name (case-insensitive). Returns `null` if no file with that name exists. Works for any archive entry, not only those in `UnknownFiles`. Throws `ArgumentNullException` when `name` is `null`.
+
+- **Ctrl-A kludge recognition** — `ExtractKludges` now recognises the FidoNet SOH prefix convention. Body lines whose first character is U+0001 (SOH, byte `0x01`) or U+263A (the CP437 visual glyph for that byte) are extracted as kludges. The prefix character is stripped from the stored key, so `kludge.Key == "MSGID"` matches regardless of which prefix form was used. This completes the three-convention kludge model.
+
+- **`DoorCapability` — 12 new enum members**: `ResetAll`, `Yours`, `Mail`, `DeleteMail`, `Attach`, `Own`, `FileRequest`, `Index`, `TimeZone`, `Via`, `MessageId`, `Control`. These cover the remaining standard `CONTROLTYPE` values defined in the QWK DOOR.ID specification that were previously mapped to `Unknown`.
+
+- **`DoorId.ControlTypes`** (`IReadOnlyList<string>`) — raw `CONTROLTYPE` line values in document order, preserving original casing and any non-standard values not covered by the `DoorCapability` enum. Useful for round-trip fidelity and for inspecting capabilities mapped to `Unknown`.
+
+- **Diagnostics tool — capabilities display**: the text analyser's `BBS INFORMATION` section now includes a `Capabilities:` line listing all `DoorCapability` names when the packet's DOOR.ID advertises at least one `CONTROLTYPE`. The JSON output includes a `doorCapabilities` array in the same circumstance. The Markdown output includes a `**Door Capabilities:**` bullet after the Door ID line.
+
+- **Diagnostics tool — additional files display**: a new `ADDITIONAL FILES` section (text), `## Additional Files` section (Markdown), and `unknownFiles` array (JSON) report any archive files not belonging to the standard QWK/QWKE file set. The section is omitted (or the array is empty) when no such files are present.
+
+### Changed
+
+- **`@`-kludge keys no longer include the `@` prefix character.** Previously the `@` sigil was retained as part of the key (e.g. `kludge.Key == "@MSGID"`). The `@` is now treated as a syntax marker and stripped, so the stored key is the bare identifier (e.g. `kludge.Key == "MSGID"`). This aligns `@`-kludge behaviour with Ctrl-A kludge behaviour — in both cases, `kludge.Key == "MSGID"` finds the entry regardless of which prefix form was used. Callers that compared against `"@MSGID"` (or similar) must remove the leading `@` from their comparison strings.
+
+---
+
+
+
 ## [1.5.0] - 2026-03-07
 
 ### Fixed

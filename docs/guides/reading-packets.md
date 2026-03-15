@@ -28,6 +28,7 @@ The standard workflow for reading packets follows these steps:
 3. **Enumerate** - Iterate through messages
 4. **Validate** - Check packet integrity (optional but recommended)
 5. **Access optional files** - Read WELCOME, NEWS, or other optional files if present
+6. **Access additional files** - Inspect and read non-standard archive files (if any)
 
 ## Minimal Example
 
@@ -61,6 +62,12 @@ if (packet.OptionalFiles.HasFile("WELCOME"))
 {
     string welcome = packet.OptionalFiles.GetText("WELCOME");
     Console.WriteLine(welcome);
+}
+
+// 6. Inspect non-standard files (if any)
+foreach (string fileName in packet.UnknownFiles)
+{
+    Console.WriteLine($"Additional file: {fileName}");
 }
 ```
 
@@ -105,6 +112,53 @@ foreach (Message message in packet.Messages)
 ```
 
 For complete message handling examples, see the [API Overview](../api-overview.md).
+
+## Kludges
+
+Some QWK packets carry machine-readable **kludge lines** at the top of message bodies. Three conventions are recognised; scanning stops at the first blank line or any line that does not match:
+
+| Convention | Trigger | Stored key |
+|---|---|---|
+| **QWKE extended headers** | Key before `:` is `To`, `From`, or `Subject` (case-insensitive) | `To`, `From`, or `Subject` |
+| **@-kludge** | Line begins `@identifier:` | Identifier without the `@` (e.g. `MSGID`) |
+| **Ctrl-A kludge** | First character is U+0001 (SOH) or its CP437 glyph U+263A | Token before the first space or colon, without the prefix |
+
+Because the prefix character is stripped, `kludge.Key == "MSGID"` matches regardless of which convention was used.
+
+```csharp
+foreach (Message message in packet.Messages)
+{
+    if (message.Kludges.Count > 0)
+    {
+        foreach (var kludge in message.Kludges)
+        {
+            Console.WriteLine($"{kludge.Key} = {kludge.Value}");
+        }
+    }
+}
+```
+
+## Accessing Additional Files
+
+Some packets bundle non-standard files alongside the standard QWK entries. `QwkPacket.UnknownFiles` lists the names of every archive file not recognised by the library as standard. `OpenFile()` opens a raw byte stream for any file in the archive by name.
+
+```csharp
+// List non-standard files
+foreach (string fileName in packet.UnknownFiles)
+{
+    Console.WriteLine($"Additional file: {fileName}");
+}
+
+// Open a file by name (returns null if not found)
+using Stream? data = packet.OpenFile("CUSTOM.DAT");
+if (data != null)
+{
+    byte[] bytes = new byte[4096];
+    int read = data.Read(bytes, 0, bytes.Length);
+}
+```
+
+`OpenFile()` accepts any archive file name, not only those in `UnknownFiles`. It returns `null` if the file is absent and throws `ArgumentNullException` if `name` is `null`.
 
 ## Troubleshooting
 

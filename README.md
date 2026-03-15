@@ -15,7 +15,11 @@ QWK.NET is a modern C# library for reading, writing, and validating QWK, REP, an
 
 ## Installation
 
-Coming soon. QWK.NET will be available via NuGet once packaging is complete.
+```bash
+dotnet add package QwkNet
+```
+
+Available on [NuGet](https://www.nuget.org/packages/QwkNet).
 
 ## Quick Start
 

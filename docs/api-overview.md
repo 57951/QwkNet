@@ -136,6 +136,12 @@ if (packet.OptionalFiles.HasFile("WELCOME"))
     string welcome = packet.OptionalFiles.GetText("WELCOME");
     Console.WriteLine(welcome);
 }
+
+// 7. Inspect additional (non-standard) files bundled in the packet
+foreach (string fileName in packet.UnknownFiles)
+{
+    Console.WriteLine($"Additional file: {fileName}");
+}
 ```
 
 ### Creating a Reply Packet
@@ -213,7 +219,7 @@ foreach (Message message in packet.Messages)
         Console.WriteLine("Message is deleted");
     }
     
-    // Access QWKE kludges (if present)
+    // Access kludges (if present)
     if (message.Kludges.Count > 0)
     {
         foreach (var kludge in message.Kludges)
@@ -222,6 +228,45 @@ foreach (Message message in packet.Messages)
         }
     }
 }
+```
+
+Three distinct kludge conventions are recognised. All appear at the top of the message body; scanning stops at the first blank line or unrecognised line:
+
+| Convention | Trigger | Key stored |
+|---|---|---|
+| **QWKE extended headers** | Line key is `To`, `From`, or `Subject` (case-insensitive) | `To`, `From`, or `Subject` |
+| **@-kludge** | Line begins with `@identifier:` | Identifier without the `@` prefix (e.g. `MSGID`) |
+| **Ctrl-A kludge** | Line begins with U+0001 (SOH) or U+263A (CP437 glyph for byte 0x01) | Token before the first space or colon, without the prefix character |
+
+Because the prefix character is stripped from the stored key, a caller checking `kludge.Key == "MSGID"` finds the kludge whether it arrived as a Ctrl-A kludge or an @-kludge. The original line text is preserved in `kludge.RawLine` for byte-level fidelity.
+
+### Accessing Additional Files
+
+`QwkPacket.UnknownFiles` lists every file in the packet archive that the library does not recognise as a standard QWK or QWKE file (i.e. not one of `MESSAGES.DAT`, `CONTROL.DAT`, `DOOR.ID`, `TOREADER.EXT`, `TODOOR.EXT`, `WELCOME`, `NEWS`, or `GOODBYE`). `OpenFile()` opens a raw byte stream for any archive file by name.
+
+```csharp
+using QwkNet;
+
+using QwkPacket packet = QwkPacket.Open("DEMO1.QWK");
+
+// List non-standard files bundled in the packet
+foreach (string fileName in packet.UnknownFiles)
+{
+    Console.WriteLine($"Additional file: {fileName}");
+}
+
+// Open a specific file by name (returns null if not found)
+using Stream? data = packet.OpenFile("CUSTOM.DAT");
+if (data != null)
+{
+    // Read raw bytes from the archive entry
+    byte[] bytes = new byte[4096];
+    int read = data.Read(bytes, 0, bytes.Length);
+    Console.WriteLine($"Read {read} bytes from CUSTOM.DAT");
+}
+
+// OpenFile works for any archive entry, not just unknown files
+using Stream? messages = packet.OpenFile("MESSAGES.DAT");
 ```
 
 ### Validation Modes
@@ -254,7 +299,9 @@ QwkPacket packet = QwkPacket.Open("DEMO1.QWK", ValidationMode.Salvage);
   - `Messages` - MessageCollection of all messages
   - `Conferences` - ConferenceCollection of conference definitions
   - `OptionalFiles` - OptionalFileCollection for lazy-loaded files
+  - `UnknownFiles` - IReadOnlyList&lt;string&gt; of archive file names not recognised as standard QWK or QWKE files
   - `DoorId` - DOOR.ID metadata (nullable if not present)
+  - `OpenFile(string name)` - Returns a `Stream?` for any archive file by name (case-insensitive); `null` if the file does not exist; throws `ArgumentNullException` if `name` is null
   - `Validate()` - Returns ValidationReport
 - **RepPacket** - Builder for creating reply packets
 - **ControlDat** - Packet metadata containing:
@@ -288,8 +335,34 @@ QwkPacket packet = QwkPacket.Open("DEMO1.QWK", ValidationMode.Salvage);
   - `RecordOffset` - Record offset within MESSAGES.DAT
 - **DoorId** - DOOR.ID metadata parser
   - `DoorName`, `Version` - Door identification
-  - `Capabilities` - Set of supported door capabilities
+  - `Capabilities` - Set of `DoorCapability` values advertised by the door
+  - `ControlTypes` - Raw CONTROLTYPE values in document order (preserves casing and non-standard values)
   - `RawEntries` - All raw key-value entries for byte fidelity
+
+**DoorCapability enum members:**
+
+| Value | DOOR.ID key | Meaning |
+|---|---|---|
+| `Add` | `CONTROLTYPE = ADD` | Add conference to scan list |
+| `Drop` | `CONTROLTYPE = DROP` | Drop conference from scan list |
+| `Request` | `CONTROLTYPE = REQUEST` | File requests |
+| `Receipt` | `RECEIPT` | Return receipt requests |
+| `MixedCase` | `MIXEDCASE = YES` | Mixed-case names and subjects |
+| `FidoTag` | `FIDOTAG = YES` | FidoNet-compliant tag-lines |
+| `Reset` | `CONTROLTYPE = RESET` | Reset last-read pointer |
+| `ResetAll` | `CONTROLTYPE = RESETALL` | Reset all last-read pointers |
+| `Yours` | `CONTROLTYPE = YOURS` | Retrieve messages addressed to current user |
+| `Mail` | `CONTROLTYPE = MAIL` | Retrieve personal mail |
+| `DeleteMail` | `CONTROLTYPE = DELMAIL` | Delete personal mail |
+| `Attach` | `CONTROLTYPE = ATTACH` | File attachments |
+| `Own` | `CONTROLTYPE = OWN` | Mark messages as owned |
+| `FileRequest` | `CONTROLTYPE = FREQ` | FidoNet-style file requests |
+| `Index` | `CONTROLTYPE = NDX` | NDX index files produced |
+| `TimeZone` | `CONTROLTYPE = TZ` | Time-zone information in headers |
+| `Via` | `CONTROLTYPE = VIA` | VIA routing path in headers |
+| `MessageId` | `CONTROLTYPE = MSGID` | MSGID kludge lines |
+| `Control` | `CONTROLTYPE = CONTROL` | Extended CONTROL kludge lines |
+| `Unknown` | *(any other value)* | Unrecognised or custom capability |
 
 ### QWKE Extensions
 

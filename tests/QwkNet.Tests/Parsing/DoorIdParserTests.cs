@@ -422,4 +422,216 @@ public sealed class DoorIdParserTests
     // Assert
     Assert.Equal("SimpleDoor 1.0", text);
   }
+
+  // -------------------------------------------------------------------------
+  // New capability round-trip tests (Part A / B)
+  // -------------------------------------------------------------------------
+
+  [Theory]
+  [InlineData("RESETALL", DoorCapability.ResetAll)]
+  [InlineData("YOURS", DoorCapability.Yours)]
+  [InlineData("MAIL", DoorCapability.Mail)]
+  [InlineData("DELMAIL", DoorCapability.DeleteMail)]
+  [InlineData("ATTACH", DoorCapability.Attach)]
+  [InlineData("OWN", DoorCapability.Own)]
+  [InlineData("FREQ", DoorCapability.FileRequest)]
+  [InlineData("NDX", DoorCapability.Index)]
+  [InlineData("TZ", DoorCapability.TimeZone)]
+  [InlineData("VIA", DoorCapability.Via)]
+  [InlineData("MSGID", DoorCapability.MessageId)]
+  [InlineData("CONTROL", DoorCapability.Control)]
+  public void Parse_NewControlTypeValues_MapsToCorrectCapability(string controlTypeValue, DoorCapability expectedCapability)
+  {
+    // Arrange
+    string content = string.Join("\r\n",
+      "DOOR = TestDoor",
+      "VERSION = 1.0",
+      $"CONTROLTYPE = {controlTypeValue}"
+    );
+    byte[] data = System.Text.Encoding.ASCII.GetBytes(content);
+
+    // Act
+    DoorId result = DoorIdParser.Parse(data, ValidationMode.Lenient);
+
+    // Assert
+    Assert.Contains(expectedCapability, result.Capabilities);
+  }
+
+  [Theory]
+  [InlineData("resetall", DoorCapability.ResetAll)]
+  [InlineData("yours", DoorCapability.Yours)]
+  [InlineData("mail", DoorCapability.Mail)]
+  [InlineData("delmail", DoorCapability.DeleteMail)]
+  [InlineData("attach", DoorCapability.Attach)]
+  [InlineData("own", DoorCapability.Own)]
+  [InlineData("freq", DoorCapability.FileRequest)]
+  [InlineData("ndx", DoorCapability.Index)]
+  [InlineData("tz", DoorCapability.TimeZone)]
+  [InlineData("via", DoorCapability.Via)]
+  [InlineData("msgid", DoorCapability.MessageId)]
+  [InlineData("control", DoorCapability.Control)]
+  public void Parse_NewControlTypeValues_CaseInsensitive_MapsToCorrectCapability(string controlTypeValue, DoorCapability expectedCapability)
+  {
+    // Arrange
+    string content = string.Join("\r\n",
+      "DOOR = TestDoor",
+      "VERSION = 1.0",
+      $"CONTROLTYPE = {controlTypeValue}"
+    );
+    byte[] data = System.Text.Encoding.ASCII.GetBytes(content);
+
+    // Act
+    DoorId result = DoorIdParser.Parse(data, ValidationMode.Lenient);
+
+    // Assert
+    Assert.Contains(expectedCapability, result.Capabilities);
+  }
+
+  // -------------------------------------------------------------------------
+  // ControlTypes list tests (Part C)
+  // -------------------------------------------------------------------------
+
+  [Fact]
+  public void Parse_MultipleControlTypes_ControlTypesListPreservesOrderAndCasing()
+  {
+    // Arrange
+    string content = string.Join("\r\n",
+      "DOOR = TestDoor",
+      "VERSION = 1.0",
+      "CONTROLTYPE = ADD",
+      "CONTROLTYPE = drop",
+      "CONTROLTYPE = ResetAll",
+      "CONTROLTYPE = YOURS"
+    );
+    byte[] data = System.Text.Encoding.ASCII.GetBytes(content);
+
+    // Act
+    DoorId result = DoorIdParser.Parse(data, ValidationMode.Lenient);
+
+    // Assert - order preserved
+    Assert.Equal(4, result.ControlTypes.Count);
+    Assert.Equal("ADD", result.ControlTypes[0]);
+    Assert.Equal("drop", result.ControlTypes[1]);
+    Assert.Equal("ResetAll", result.ControlTypes[2]);
+    Assert.Equal("YOURS", result.ControlTypes[3]);
+  }
+
+  [Fact]
+  public void Parse_NoControlTypes_ControlTypesListIsEmpty()
+  {
+    // Arrange
+    string content = string.Join("\r\n",
+      "DOOR = TestDoor",
+      "VERSION = 1.0"
+    );
+    byte[] data = System.Text.Encoding.ASCII.GetBytes(content);
+
+    // Act
+    DoorId result = DoorIdParser.Parse(data, ValidationMode.Lenient);
+
+    // Assert
+    Assert.Empty(result.ControlTypes);
+  }
+
+  [Fact]
+  public void Parse_UnknownControlType_AppearsInControlTypesListButMapsToUnknown()
+  {
+    // Arrange
+    string content = string.Join("\r\n",
+      "DOOR = TestDoor",
+      "VERSION = 1.0",
+      "CONTROLTYPE = FILES",
+      "CONTROLTYPE = CTRL-A"
+    );
+    byte[] data = System.Text.Encoding.ASCII.GetBytes(content);
+
+    // Act
+    DoorId result = DoorIdParser.Parse(data, ValidationMode.Lenient);
+
+    // Assert - raw values are preserved
+    Assert.Equal(2, result.ControlTypes.Count);
+    Assert.Equal("FILES", result.ControlTypes[0]);
+    Assert.Equal("CTRL-A", result.ControlTypes[1]);
+
+    // Both map to Unknown in the capability set
+    Assert.Contains(DoorCapability.Unknown, result.Capabilities);
+  }
+
+  // -------------------------------------------------------------------------
+  // Synchronet 3.21 real-world fixture test (Part D)
+  // -------------------------------------------------------------------------
+
+  [Fact]
+  public void Parse_Synchronet321RealWorldDoorId_ParsesCorrectly()
+  {
+    // Arrange - exact content as found in a Synchronet 3.21a QWK packet
+    string content = string.Join("\r\n",
+      "DOOR = Synchronet",
+      "VERSION = 3.21a",
+      "SYSTEM = Synchronet BBS for Win32  Version 3.21a",
+      "CONTROLNAME = SBBS",
+      "CONTROLTYPE = ADD",
+      "CONTROLTYPE = DROP",
+      "CONTROLTYPE = YOURS",
+      "CONTROLTYPE = RESET",
+      "CONTROLTYPE = RESETALL",
+      "CONTROLTYPE = FILES",
+      "CONTROLTYPE = ATTACH",
+      "CONTROLTYPE = OWN",
+      "CONTROLTYPE = MAIL",
+      "CONTROLTYPE = DELMAIL",
+      "CONTROLTYPE = CTRL-A",
+      "CONTROLTYPE = FREQ",
+      "CONTROLTYPE = NDX",
+      "CONTROLTYPE = TZ",
+      "CONTROLTYPE = VIA",
+      "CONTROLTYPE = MSGID",
+      "CONTROLTYPE = CONTROL",
+      "MIXEDCASE = YES"
+    );
+    byte[] data = System.Text.Encoding.ASCII.GetBytes(content);
+
+    // Act
+    DoorId result = DoorIdParser.Parse(data, ValidationMode.Lenient);
+
+    // Assert - standard fields
+    Assert.Equal("Synchronet", result.DoorName);
+    Assert.Equal("3.21a", result.Version);
+    Assert.Equal("Synchronet BBS for Win32  Version 3.21a", result.SystemType);
+    Assert.Equal("SBBS", result.ControlName);
+
+    // Assert - known capabilities
+    Assert.Contains(DoorCapability.Add, result.Capabilities);
+    Assert.Contains(DoorCapability.Drop, result.Capabilities);
+    Assert.Contains(DoorCapability.Yours, result.Capabilities);
+    Assert.Contains(DoorCapability.Reset, result.Capabilities);
+    Assert.Contains(DoorCapability.ResetAll, result.Capabilities);
+    Assert.Contains(DoorCapability.Attach, result.Capabilities);
+    Assert.Contains(DoorCapability.Own, result.Capabilities);
+    Assert.Contains(DoorCapability.Mail, result.Capabilities);
+    Assert.Contains(DoorCapability.DeleteMail, result.Capabilities);
+    Assert.Contains(DoorCapability.FileRequest, result.Capabilities);
+    Assert.Contains(DoorCapability.Index, result.Capabilities);
+    Assert.Contains(DoorCapability.TimeZone, result.Capabilities);
+    Assert.Contains(DoorCapability.Via, result.Capabilities);
+    Assert.Contains(DoorCapability.MessageId, result.Capabilities);
+    Assert.Contains(DoorCapability.Control, result.Capabilities);
+    Assert.Contains(DoorCapability.MixedCase, result.Capabilities);
+
+    // FILES and CTRL-A are not in the enum so they map to Unknown
+    Assert.Contains(DoorCapability.Unknown, result.Capabilities);
+
+    // Assert - ControlTypes list preserves order and casing
+    string[] expectedControlTypes =
+    [
+      "ADD", "DROP", "YOURS", "RESET", "RESETALL",
+      "FILES", "ATTACH", "OWN", "MAIL", "DELMAIL",
+      "CTRL-A", "FREQ", "NDX", "TZ", "VIA", "MSGID", "CONTROL"
+    ];
+    Assert.Equal(expectedControlTypes.Length, result.ControlTypes.Count);
+    for (int i = 0; i < expectedControlTypes.Length; i++)
+    {
+      Assert.Equal(expectedControlTypes[i], result.ControlTypes[i]);
+    }
+  }
 }

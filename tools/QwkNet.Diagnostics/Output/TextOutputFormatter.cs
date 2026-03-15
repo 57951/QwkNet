@@ -102,6 +102,10 @@ internal sealed class TextOutputFormatter : IOutputFormatter
       {
         sb.AppendLine($"  Door System:   {result.DoorSystem}");
       }
+      if (result.DoorCapabilities.Count > 0)
+      {
+        sb.AppendLine($"  Capabilities:  {string.Join(", ", result.DoorCapabilities)}");
+      }
     }
     sb.AppendLine();
 
@@ -167,6 +171,17 @@ internal sealed class TextOutputFormatter : IOutputFormatter
     {
       sb.AppendLine("OPTIONAL FILES:");
       foreach (string file in result.OptionalFiles)
+      {
+        sb.AppendLine($"  - {file}");
+      }
+      sb.AppendLine();
+    }
+
+    // Additional (non-standard) archive files
+    if (result.UnknownFiles.Count > 0)
+    {
+      sb.AppendLine("ADDITIONAL FILES:");
+      foreach (string file in result.UnknownFiles)
       {
         sb.AppendLine($"  - {file}");
       }

@@ -48,6 +48,7 @@ public sealed class DoorIdParser
     // Parse key-value pairs (case-insensitive keys)
     Dictionary<string, string> entries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     HashSet<DoorCapability> capabilities = new HashSet<DoorCapability>();
+    List<string> controlTypes = new List<string>();
 
     foreach (string line in lines)
     {
@@ -84,10 +85,11 @@ public sealed class DoorIdParser
       // Handle multiple entries with same key (e.g., multiple CONTROLTYPE lines)
       if (entries.ContainsKey(key))
       {
-        // For CONTROLTYPE, accumulate capabilities
+        // For CONTROLTYPE, accumulate capabilities and preserve raw values in order
         if (key.Equals("CONTROLTYPE", StringComparison.OrdinalIgnoreCase))
         {
           capabilities.Add(ParseControlType(value));
+          controlTypes.Add(value);
         }
         // For other keys, keep first value but warn
         else
@@ -103,6 +105,7 @@ public sealed class DoorIdParser
         if (key.Equals("CONTROLTYPE", StringComparison.OrdinalIgnoreCase))
         {
           capabilities.Add(ParseControlType(value));
+          controlTypes.Add(value);
         }
         else if (key.Equals("MIXEDCASE", StringComparison.OrdinalIgnoreCase) &&
                  value.Equals("YES", StringComparison.OrdinalIgnoreCase))
@@ -139,7 +142,8 @@ public sealed class DoorIdParser
       systemType,
       controlName,
       capabilities,
-      entries
+      entries,
+      controlTypes
     );
   }
 
@@ -174,6 +178,18 @@ public sealed class DoorIdParser
       "DROP" => DoorCapability.Drop,
       "REQUEST" => DoorCapability.Request,
       "RESET" => DoorCapability.Reset,
+      "RESETALL" => DoorCapability.ResetAll,
+      "YOURS" => DoorCapability.Yours,
+      "MAIL" => DoorCapability.Mail,
+      "DELMAIL" => DoorCapability.DeleteMail,
+      "ATTACH" => DoorCapability.Attach,
+      "OWN" => DoorCapability.Own,
+      "FREQ" => DoorCapability.FileRequest,
+      "NDX" => DoorCapability.Index,
+      "TZ" => DoorCapability.TimeZone,
+      "VIA" => DoorCapability.Via,
+      "MSGID" => DoorCapability.MessageId,
+      "CONTROL" => DoorCapability.Control,
       _ => DoorCapability.Unknown
     };
   }

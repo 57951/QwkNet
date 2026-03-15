@@ -153,7 +153,7 @@ public sealed class ExtractKludgesTests
   [Fact]
   public void ExtractKludges_SynchronetAtKludge_IsExtractedAsKludge()
   {
-    // Arrange – single @-kludge as written by Synchronet
+    // Arrange - single @-kludge
     List<string> bodyLines = new List<string>
     {
       "@VIA: VERT",
@@ -163,8 +163,9 @@ public sealed class ExtractKludgesTests
     using QwkPacket packet = OpenPacketWithBody(bodyLines);
     Message message = Assert.Single(packet.Messages);
 
-    Assert.True(message.Kludges.ContainsKey("@VIA"));
-    MessageKludge kludge = Assert.Single(message.Kludges.GetByKey("@VIA"));
+    // The '@' is a syntax marker and is NOT stored as part of the key.
+    Assert.True(message.Kludges.ContainsKey("VIA"));
+    MessageKludge kludge = Assert.Single(message.Kludges.GetByKey("VIA"));
     Assert.Equal("VERT", kludge.Value);
     Assert.DoesNotContain(message.Body.Lines, l => l.StartsWith("@VIA:"));
   }
@@ -172,7 +173,7 @@ public sealed class ExtractKludgesTests
   [Fact]
   public void ExtractKludges_MultipleSynchronetAtKludges_AllExtracted()
   {
-    // Arrange – realistic Synchronet QWKE header block
+    // Arrange - realistic @-kludge header block
     List<string> bodyLines = new List<string>
     {
       "@VIA: VERT",
@@ -186,12 +187,12 @@ public sealed class ExtractKludgesTests
     Message message = Assert.Single(packet.Messages);
 
     Assert.Equal(4, message.Kludges.Count);
-    Assert.True(message.Kludges.ContainsKey("@VIA"));
-    Assert.True(message.Kludges.ContainsKey("@MSGID"));
-    Assert.True(message.Kludges.ContainsKey("@REPLY"));
-    Assert.True(message.Kludges.ContainsKey("@TZ"));
+    Assert.True(message.Kludges.ContainsKey("VIA"));
+    Assert.True(message.Kludges.ContainsKey("MSGID"));
+    Assert.True(message.Kludges.ContainsKey("REPLY"));
+    Assert.True(message.Kludges.ContainsKey("TZ"));
 
-    Assert.Equal("41e0", message.Kludges.GetFirstByKey("@TZ")!.Value);
+    Assert.Equal("41e0", message.Kludges.GetFirstByKey("TZ")!.Value);
 
     // Body must be clean
     foreach (string line in message.Body.Lines)
@@ -201,9 +202,12 @@ public sealed class ExtractKludgesTests
   }
 
   [Fact]
-  public void ExtractKludges_SynchronetAtKludge_KeyIncludesAtSign()
+  public void ExtractKludges_AtKludge_AtSignIsNotStoredInKey()
   {
-    // Arrange – verify the @ is part of the stored key, not stripped
+    // The '@' is a syntax prefix, not part of the key name.
+    // A caller must use the bare token (e.g. "MSGID") to retrieve the kludge.
+
+    // Arrange
     List<string> bodyLines = new List<string>
     {
       "@MSGID: <abc123.msg@bbs.example.com>",
@@ -213,9 +217,9 @@ public sealed class ExtractKludgesTests
     using QwkPacket packet = OpenPacketWithBody(bodyLines);
     Message message = Assert.Single(packet.Messages);
 
-    // Must be retrievable as "@MSGID", not "MSGID"
-    Assert.True(message.Kludges.ContainsKey("@MSGID"));
-    Assert.False(message.Kludges.ContainsKey("MSGID"));
+    // Must be retrievable as "MSGID", not "@MSGID"
+    Assert.True(message.Kludges.ContainsKey("MSGID"));
+    Assert.False(message.Kludges.ContainsKey("@MSGID"));
   }
 
   [Fact]
@@ -241,20 +245,14 @@ public sealed class ExtractKludgesTests
   // ──────────────────────────────────────────────────────────────────────────
 
   [Fact]
-  public void ExtractKludges_Byte0x01_DecodesAsCp437Glyph_NotSohControl()
+  public void ExtractKludges_Byte0x01_DecodesAsCp437Glyph_IsNowExtractedAsCtrlAKludge()
   {
-    // CP437 maps byte 0x01 to U+263A (☺ WHITE SMILING FACE), not U+0001 (SOH).
-    // A line beginning with byte 0x01 in a QWK body therefore arrives at
-    // ExtractKludges as a line beginning with '☺', not '\x01'.
-    //
-    // This test documents that fact and verifies the line is treated as body
-    // text (not a kludge), which is the correct behaviour given the current
-    // CP437 pipeline.  Supporting FidoNet SOH kludges properly would require
-    // inspecting the raw byte stream before CP437 decoding.
+    // BuildMessagesData writes (byte)ch, so '\x01' -> 0x01 in the stream.
+    // On .NET with ICU (macOS/Linux) byte 0x01 decodes to U+0001 (SOH).
+    // On Windows, CP437 may map byte 0x01 to U+263A (WHITE SMILING FACE).
+    // The kludge extractor recognises BOTH U+0001 and U+263A as Ctrl-A prefixes.
 
-    // Arrange — write byte 0x01 directly into the body block.
-    // BuildMessagesData writes (byte)ch, so '\x01' → 0x01 in the stream.
-    // After CP437 decode it becomes '☺' (U+263A).
+    // Arrange
     List<string> bodyLines = new List<string>
     {
       "\x01MSGID: 2:280/464 61234567",
@@ -264,21 +262,216 @@ public sealed class ExtractKludgesTests
     using QwkPacket packet = OpenPacketWithBody(bodyLines);
     Message message = Assert.Single(packet.Messages);
 
-    // No kludge extracted — the '☺'-prefixed line is not recognised as any convention.
-    Assert.Empty(message.Kludges);
+    // Ctrl-A prefix IS recognised; key stored without the prefix character.
+    Assert.True(message.Kludges.ContainsKey("MSGID"));
+    MessageKludge kludge = Assert.Single(message.Kludges.GetByKey("MSGID"));
+    Assert.Equal("2:280/464 61234567", kludge.Value);
 
-    // The line survives in the body (as a CP437-decoded string starting with ☺).
-    Assert.NotEmpty(message.Body.Lines);
+    // The raw line is preserved verbatim (including the prefix character).
+    // Accept both U+263A (Windows CP437) and U+0001 (ICU CP437) as valid prefixes.
+    Assert.True(
+      kludge.RawLine[0] == '\u0001' || kludge.RawLine[0] == '\u263A',
+      $"Expected RawLine to start with U+0001 or U+263A, got U+{(int)kludge.RawLine[0]:X4}");
+
+    // Body must not contain the kludge line.
+    Assert.DoesNotContain(message.Body.Lines, l => l.Contains("2:280/464"));
+  }
+
+  [Fact]
+  public void ExtractKludges_CtrlAKludge_LiteralU0001Prefix_IsExtracted()
+  {
+    // A line beginning with the literal U+0001 character (not via CP437 decode)
+    // must also be recognised as a Ctrl-A kludge.
+
+    // Arrange - build a line starting with Unicode U+0001
+    List<string> bodyLines = new List<string>
+    {
+      "\u0001TID: clrghouz bef63309",
+      "Body text.",
+    };
+
+    using QwkPacket packet = OpenPacketWithBody(bodyLines);
+    Message message = Assert.Single(packet.Messages);
+
+    Assert.True(message.Kludges.ContainsKey("TID"));
+    MessageKludge kludge = Assert.Single(message.Kludges.GetByKey("TID"));
+    Assert.Equal("clrghouz bef63309", kludge.Value);
+    Assert.StartsWith("\u0001", kludge.RawLine);
+  }
+
+  [Fact]
+  public void ExtractKludges_CtrlAKludge_SpaceSeparatedKeyAndValue_IsExtracted()
+  {
+    // Some SOH kludges use a space rather than a colon as the key-value separator.
+    // e.g. \x01AREA FIBBLE_NET
+
+    // Arrange - use explicit \u0001 (SOH) to avoid the C# \x{hex} greedy-parse issue
+    // where '\x01A' would be parsed as U+001A (SUBSTITUTE) rather than U+0001 + 'A'.
+    List<string> bodyLines = new List<string>
+    {
+      "\u0001AREA FIBBLE_NET",
+      "Body.",
+    };
+
+    using QwkPacket packet = OpenPacketWithBody(bodyLines);
+    Message message = Assert.Single(packet.Messages);
+
+    Assert.True(message.Kludges.ContainsKey("AREA"));
+    Assert.Equal("FIBBLE_NET", message.Kludges.GetFirstByKey("AREA")!.Value);
+  }
+
+  [Fact]
+  public void ExtractKludges_CtrlAKludge_MultipleLines_AllExtracted()
+  {
+    // Arrange - two sequential Ctrl-A kludge lines
+    List<string> bodyLines = new List<string>
+    {
+      "\x01MSGID: 21:3/236@fsxnet 7683D1D6",
+      "\x01TID: clrghouz bef63309",
+      "Body line.",
+    };
+
+    using QwkPacket packet = OpenPacketWithBody(bodyLines);
+    Message message = Assert.Single(packet.Messages);
+
+    Assert.Equal(2, message.Kludges.Count);
+    Assert.True(message.Kludges.ContainsKey("MSGID"));
+    Assert.True(message.Kludges.ContainsKey("TID"));
+    Assert.Equal("21:3/236@fsxnet 7683D1D6", message.Kludges.GetFirstByKey("MSGID")!.Value);
+    Assert.Equal("clrghouz bef63309", message.Kludges.GetFirstByKey("TID")!.Value);
+  }
+
+  [Fact]
+  public void ExtractKludges_CtrlAKludge_RawLinePreservedWithPrefixChar()
+  {
+    // The RawLine must include the CP437 prefix glyph (U+263A) verbatim.
+
+    // Arrange - '\x01' in source -> 0x01 in stream -> U+263A after CP437 decode
+    List<string> bodyLines = new List<string>
+    {
+      "\x01REPLY: 21:3/236@fsxnet 7683D100",
+      "Body.",
+    };
+
+    using QwkPacket packet = OpenPacketWithBody(bodyLines);
+    Message message = Assert.Single(packet.Messages);
+
+    MessageKludge kludge = Assert.Single(message.Kludges.GetByKey("REPLY"));
+
+    // Key must NOT contain the prefix character
+    Assert.Equal("REPLY", kludge.Key);
+
+    // RawLine must start with the CP437-decoded glyph (U+263A), not the original 0x01
+    Assert.True(
+      kludge.RawLine[0] == '\u263A' || kludge.RawLine[0] == '\u0001',
+      $"Expected RawLine to start with U+263A or U+0001, got U+{(int)kludge.RawLine[0]:X4}");
+  }
+
+  [Fact]
+  public void ExtractKludges_CtrlAKludge_StopsAtNonKludgeLine()
+  {
+    // The first line that does not match any kludge convention must halt extraction.
+
+    // Arrange - one Ctrl-A kludge followed immediately by a plain body line
+    List<string> bodyLines = new List<string>
+    {
+      "\x01MSGID: abc def",
+      "This is a normal body line.",
+      "Second body line.",
+    };
+
+    using QwkPacket packet = OpenPacketWithBody(bodyLines);
+    Message message = Assert.Single(packet.Messages);
+
+    // Only the Ctrl-A kludge extracted
+    Assert.Single(message.Kludges);
+    Assert.True(message.Kludges.ContainsKey("MSGID"));
+
+    // Both body lines must remain intact
+    Assert.Contains(message.Body.Lines, l => l.Contains("This is a normal body line."));
+    Assert.Contains(message.Body.Lines, l => l.Contains("Second body line."));
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Mixed conventions
+  // Mixed conventions — all three forms together
+  // ──────────────────────────────────────────────────────────────────────────
+
+  [Fact]
+  public void ExtractKludges_AllThreeFormsMixed_AllExtracted()
+  {
+    // All three kludge forms may appear consecutively in the same message body.
+    // A single scan must extract all of them and stop at the first non-kludge line.
+
+    // Arrange - QWKE header, then Ctrl-A kludges, then @-kludges, then body
+    List<string> bodyLines = new List<string>
+    {
+      "Subject: Extended Subject Line",
+      "\x01MSGID: 21:3/236@fsxnet 7683D1D6",
+      "\x01TID: clrghouz bef63309",
+      "@VIA: VERT",
+      "@TZ: fe5c",
+      "Normal body text.",
+    };
+
+    using QwkPacket packet = OpenPacketWithBody(bodyLines);
+    Message message = Assert.Single(packet.Messages);
+
+    // Five kludges from three different forms
+    Assert.Equal(5, message.Kludges.Count);
+    Assert.True(message.Kludges.ContainsKey("Subject")); // QWKE
+    Assert.True(message.Kludges.ContainsKey("MSGID"));   // Ctrl-A
+    Assert.True(message.Kludges.ContainsKey("TID"));     // Ctrl-A
+    Assert.True(message.Kludges.ContainsKey("VIA"));     // @-kludge
+    Assert.True(message.Kludges.ContainsKey("TZ"));      // @-kludge
+
+    // Body must contain only the non-kludge line
+    Assert.Single(message.Body.Lines, l => l.Contains("Normal body text."));
+    foreach (string line in message.Body.Lines)
+    {
+      Assert.False(line.StartsWith("Subject:"), $"QWKE line leaked into body: '{line}'");
+      Assert.False(line[0] == '\u263A' || line[0] == '\u0001', $"Ctrl-A kludge leaked into body: '{line}'");
+      Assert.False(line.StartsWith("@"), $"@-kludge leaked into body: '{line}'");
+    }
+  }
+
+  [Fact]
+  public void ExtractKludges_AllThreeForms_RawLinesPreservedVerbatim()
+  {
+    // RawLine must be verbatim for each form, including any prefix character.
+
+    // Arrange
+    List<string> bodyLines = new List<string>
+    {
+      "Subject: Raw Line Test",
+      "\x01MSGID: raw msgid value",
+      "@VIA: raw via value",
+      "Body.",
+    };
+
+    using QwkPacket packet = OpenPacketWithBody(bodyLines);
+    Message message = Assert.Single(packet.Messages);
+
+    // QWKE header raw line
+    MessageKludge subjectKludge = Assert.Single(message.Kludges.GetByKey("Subject"));
+    Assert.Equal("Subject: Raw Line Test", subjectKludge.RawLine);
+
+    // Ctrl-A raw line starts with the CP437 glyph (U+263A) for byte 0x01
+    MessageKludge msgidKludge = Assert.Single(message.Kludges.GetByKey("MSGID"));
+    Assert.True(
+      msgidKludge.RawLine[0] == '\u263A' || msgidKludge.RawLine[0] == '\u0001',
+      "RawLine of Ctrl-A kludge must start with the prefix character");
+    Assert.Contains("raw msgid value", msgidKludge.RawLine);
+
+    // @-kludge raw line includes the '@'
+    MessageKludge viaKludge = Assert.Single(message.Kludges.GetByKey("VIA"));
+    Assert.Equal("@VIA: raw via value", viaKludge.RawLine);
+  }
   // ──────────────────────────────────────────────────────────────────────────
 
   [Fact]
   public void ExtractKludges_QwkeAndAtKludgesTogether_AllExtracted()
   {
-    // Arrange – realistic Synchronet QWKE packet: QWKE header followed by @-kludges
+    // Arrange - realistic QWKE packet: QWKE header followed by @-kludges
     List<string> bodyLines = new List<string>
     {
       "Subject: The American Connection BBS",
@@ -298,10 +491,10 @@ public sealed class ExtractKludgesTests
     // Five kludges total
     Assert.Equal(5, message.Kludges.Count);
     Assert.True(message.Kludges.ContainsKey("Subject"));
-    Assert.True(message.Kludges.ContainsKey("@VIA"));
-    Assert.True(message.Kludges.ContainsKey("@MSGID"));
-    Assert.True(message.Kludges.ContainsKey("@REPLY"));
-    Assert.True(message.Kludges.ContainsKey("@TZ"));
+    Assert.True(message.Kludges.ContainsKey("VIA"));
+    Assert.True(message.Kludges.ContainsKey("MSGID"));
+    Assert.True(message.Kludges.ContainsKey("REPLY"));
+    Assert.True(message.Kludges.ContainsKey("TZ"));
 
     // Re: and By: must remain in the body, not be treated as kludges
     Assert.Contains(message.Body.Lines, l => l.StartsWith("Re:"));
@@ -496,7 +689,7 @@ public sealed class ExtractKludgesTests
   [Fact]
   public void ExtractKludges_KludgeValueIsEmpty_ExtractedCorrectly()
   {
-    // Arrange – @-kludge with empty value
+    // Arrange - @-kludge with empty value
     List<string> bodyLines = new List<string>
     {
       "@FLAGS:",
@@ -506,14 +699,16 @@ public sealed class ExtractKludgesTests
     using QwkPacket packet = OpenPacketWithBody(bodyLines);
     Message message = Assert.Single(packet.Messages);
 
-    Assert.True(message.Kludges.ContainsKey("@FLAGS"));
-    Assert.Equal(string.Empty, message.Kludges.GetFirstByKey("@FLAGS")!.Value);
+    Assert.True(message.Kludges.ContainsKey("FLAGS"));
+    Assert.Equal(string.Empty, message.Kludges.GetFirstByKey("FLAGS")!.Value);
   }
 
   [Fact]
   public void ExtractKludges_RawLinePreserved()
   {
-    // Arrange – verify RawLine is the exact original line
+    // The RawLine must be the verbatim original line, including the '@' prefix.
+
+    // Arrange
     List<string> bodyLines = new List<string>
     {
       "@MSGID: <exact.raw.line@test.net>",
@@ -523,7 +718,8 @@ public sealed class ExtractKludgesTests
     using QwkPacket packet = OpenPacketWithBody(bodyLines);
     Message message = Assert.Single(packet.Messages);
 
-    MessageKludge kludge = Assert.Single(message.Kludges.GetByKey("@MSGID"));
+    // Key stored WITHOUT '@', but RawLine preserved WITH '@'
+    MessageKludge kludge = Assert.Single(message.Kludges.GetByKey("MSGID"));
     Assert.Equal("@MSGID: <exact.raw.line@test.net>", kludge.RawLine);
   }
 

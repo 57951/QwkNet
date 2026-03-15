@@ -33,6 +33,26 @@ public sealed class QwkPacket : IDisposable
   private bool _disposed;
 
   /// <summary>
+  /// The set of file names that are recognised and handled by the core library.
+  /// </summary>
+  /// <remarks>
+  /// Any archive entry whose name (compared case-insensitively) is not in this
+  /// set will appear in <see cref="UnknownFiles"/> and can be opened via
+  /// <see cref="OpenFile"/>.
+  /// </remarks>
+  private static readonly IReadOnlySet<string> _knownFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+  {
+    "MESSAGES.DAT",
+    "CONTROL.DAT",
+    "DOOR.ID",
+    "TOREADER.EXT",
+    "TODOOR.EXT",
+    "WELCOME",
+    "NEWS",
+    "GOODBYE"
+  };
+
+  /// <summary>
   /// Gets the control data (CONTROL.DAT) for this packet.
   /// </summary>
   public ControlDat Control { get; }
@@ -62,6 +82,23 @@ public sealed class QwkPacket : IDisposable
   /// </summary>
   public ValidationReport ValidationReport { get; }
 
+  /// <summary>
+  /// Gets the names of all files in the archive that are not recognised
+  /// by the core library as standard QWK or QWKE files.
+  /// </summary>
+  /// <remarks>
+  /// <para>
+  /// The list is populated during <see cref="Open(string, ValidationMode)"/> by
+  /// enumerating all archive entries and excluding the set of known file names
+  /// defined in <see cref="_knownFileNames"/>. Comparison is case-insensitive.
+  /// </para>
+  /// <para>
+  /// Callers may use <see cref="OpenFile"/> to obtain a raw byte stream for any
+  /// entry in this list, or for any other file in the archive by name.
+  /// </para>
+  /// </remarks>
+  public IReadOnlyList<string> UnknownFiles { get; }
+
   private QwkPacket(
     IArchiveReader archive,
     ControlDat control,
@@ -69,7 +106,8 @@ public sealed class QwkPacket : IDisposable
     ConferenceCollection conferences,
     OptionalFileCollection optionalFiles,
     DoorId? doorId,
-    ValidationReport validationReport)
+    ValidationReport validationReport,
+    IReadOnlyList<string> unknownFiles)
   {
     _archive = archive ?? throw new ArgumentNullException(nameof(archive));
     Control = control ?? throw new ArgumentNullException(nameof(control));
@@ -78,6 +116,38 @@ public sealed class QwkPacket : IDisposable
     OptionalFiles = optionalFiles ?? throw new ArgumentNullException(nameof(optionalFiles));
     DoorId = doorId;
     ValidationReport = validationReport ?? throw new ArgumentNullException(nameof(validationReport));
+    UnknownFiles = unknownFiles ?? throw new ArgumentNullException(nameof(unknownFiles));
+  }
+
+  /// <summary>
+  /// Opens a raw byte stream for any file in the archive by name (case-insensitive).
+  /// </summary>
+  /// <param name="name">The name of the file to open.</param>
+  /// <returns>
+  /// A readable stream positioned at the start of the file, or <see langword="null"/>
+  /// if no file with that name exists in the archive.
+  /// </returns>
+  /// <remarks>
+  /// The stream is owned by the caller and must be disposed when no longer needed.
+  /// This method delegates directly to the underlying archive reader without
+  /// parsing or interpreting the stream contents in any way.
+  /// </remarks>
+  /// <exception cref="ArgumentNullException">
+  /// Thrown when <paramref name="name"/> is <see langword="null"/>.
+  /// </exception>
+  public Stream? OpenFile(string name)
+  {
+    if (name == null)
+    {
+      throw new ArgumentNullException(nameof(name));
+    }
+
+    if (!_archive.FileExists(name))
+    {
+      return null;
+    }
+
+    return _archive.OpenFile(name);
   }
 
   /// <summary>
@@ -200,6 +270,16 @@ public sealed class QwkPacket : IDisposable
     ConferenceCollection conferenceCollection = new ConferenceCollection(control.Conferences);
     OptionalFileCollection optionalFiles = new OptionalFileCollection(archive);
 
+    // Determine unknown files (archive entries not handled by the core library)
+    List<string> unknownFiles = new List<string>();
+    foreach (string fileName in archive.ListFiles())
+    {
+      if (!_knownFileNames.Contains(fileName))
+      {
+        unknownFiles.Add(fileName);
+      }
+    }
+
     // Create validation report from context
     ValidationReport report = ValidationReport.FromContext(context);
 
@@ -209,7 +289,7 @@ public sealed class QwkPacket : IDisposable
       throw new QwkFormatException($"Packet validation failed with {context.Issues.Count} error(s).");
     }
 
-    return new QwkPacket(archive, control, messageCollection, conferenceCollection, optionalFiles, doorId, report);
+    return new QwkPacket(archive, control, messageCollection, conferenceCollection, optionalFiles, doorId, report, unknownFiles);
   }
 
   private static ControlDat ParseControlDat(IArchiveReader archive, ValidationMode mode, ValidationContext context)
@@ -541,10 +621,28 @@ public sealed class QwkPacket : IDisposable
   /// </summary>
   /// <remarks>
   /// <para>
-  /// Two distinct kludge conventions are recognised, both of which appear at the
+  /// Three distinct kludge conventions are recognised, all of which appear at the
   /// very top of the message body before any human-readable content:
   /// </para>
   /// <list type="bullet">
+  /// <item>
+  /// <term>Ctrl-A kludge (SOH prefix)</term>
+  /// <description>
+  /// Lines whose first character is U+0001 (SOH) or U+263A (the CP437 glyph for
+  /// byte 0x01, a white smiling face). The key is the token before the first space
+  /// or colon; the value is the remainder. The prefix character is NOT stored as
+  /// part of the key — a caller checking for <c>kludge.Key == "MSGID"</c> will
+  /// find the kludge regardless of which prefix form was used.
+  /// </description>
+  /// </item>
+  /// <item>
+  /// <term>At-sign kludge</term>
+  /// <description>
+  /// Lines beginning with <c>@</c> followed by an identifier and a colon,
+  /// e.g. <c>@MSGID:</c>, <c>@REPLY:</c>, <c>@VIA:</c>, <c>@TZ:</c>.
+  /// The <c>@</c> prefix is a syntax marker and is NOT stored as part of the key.
+  /// </description>
+  /// </item>
   /// <item>
   /// <term>QWKE extended headers</term>
   /// <description>
@@ -553,36 +651,20 @@ public sealed class QwkPacket : IDisposable
   /// QWKE Specification v1.02.
   /// </description>
   /// </item>
-  /// <item>
-  /// <term>Synchronet <c>@</c>-kludges</term>
-  /// <description>
-  /// Lines beginning with <c>@</c> followed by an identifier and a colon,
-  /// e.g. <c>@MSGID:</c>, <c>@REPLY:</c>, <c>@VIA:</c>, <c>@TZ:</c>. Synchronet-specific
-  /// extension; the key stored includes the leading <c>@</c>.
-  /// </description>
-  /// </item>
   /// </list>
   /// <para>
   /// Scanning stops unconditionally at the first blank line or at any line that does
-  /// not match one of the two conventions above. This prevents body text such as
-  /// Synchronet's <c>Re:</c> / <c>By:</c> reply attribution lines from being
-  /// misidentified as kludges.
+  /// not match one of the three conventions above. This prevents body text such as
+  /// <c>Re:</c> / <c>By:</c> reply attribution lines from being misidentified as kludges.
   /// </para>
   /// <para>
   /// The QWKE specification requires a blank line between the last kludge and the
   /// message body proper. That blank line is consumed (removed from the body) only
-  /// when at least one kludge has already been extracted — it is acting as a
+  /// when at least one kludge has already been extracted - it is acting as a
   /// delimiter and carries no content value. A blank line that appears before any
   /// kludge has been found is ordinary body formatting and is left intact.
   /// In practice many real-world packets omit the blank separator entirely;
   /// the prefix-based detection means the scanner stops correctly in either case.
-  /// </para>
-  /// <para>
-  /// Note on FidoNet SOH kludges: FidoNet kludges use a byte-value-1 (SOH) prefix
-  /// in the raw packet, but CP437 decoding maps byte <c>0x01</c> to U+263A (☺).
-  /// If a future requirement arises to support FidoNet-origin packets, this method
-  /// must be extended to detect <c>line[0] == '☺'</c> rather than <c>'\x01'</c>,
-  /// and the byte stream would need to be inspected before CP437 decoding.
   /// </para>
   /// </remarks>
   private static List<MessageKludge> ExtractKludges(ref List<string> bodyLines)
@@ -601,7 +683,7 @@ public sealed class QwkPacket : IDisposable
       string line = bodyLines[i];
 
       // A blank line terminates the kludge block.
-      // It is consumed only when at least one kludge has already been found —
+      // It is consumed only when at least one kludge has already been found -
       // it is then acting as the QWKE-specified separator between the kludge
       // block and the message body, and carries no content value.
       // A blank line that appears before any kludges is ordinary body content
@@ -619,9 +701,37 @@ public sealed class QwkPacket : IDisposable
       string key;
       string value;
 
-      if (line[0] == '@')
+      if (line[0] == '\u0001' || line[0] == '\u263A')
       {
-        // Synchronet @-kludge: @KEY: value
+        // Ctrl-A kludge: SOH (U+0001) or its CP437 glyph (U+263A = ☺) prefix.
+        // Key = token before the first space or colon; value = remainder.
+        // The prefix character is stripped from the key.
+        string kludgeContent = line.Substring(1);
+        int sepIndex = -1;
+        for (int j = 0; j < kludgeContent.Length; j++)
+        {
+          if (kludgeContent[j] == ' ' || kludgeContent[j] == ':')
+          {
+            sepIndex = j;
+            break;
+          }
+        }
+
+        if (sepIndex < 1)
+        {
+          // No valid key found.
+          break;
+        }
+
+        key = kludgeContent.Substring(0, sepIndex);
+        value = sepIndex + 1 < kludgeContent.Length
+          ? kludgeContent.Substring(sepIndex + 1).TrimStart()
+          : string.Empty;
+      }
+      else if (line[0] == '@')
+      {
+        // At-sign kludge: @KEY: value
+        // The '@' is a syntax marker and is NOT stored as part of the key.
         int colonIndex = line.IndexOf(':');
         if (colonIndex < 2)
         {
@@ -629,7 +739,7 @@ public sealed class QwkPacket : IDisposable
           break;
         }
 
-        key = line.Substring(0, colonIndex).Trim();
+        key = line.Substring(1, colonIndex - 1).Trim();
         value = colonIndex + 1 < line.Length
           ? line.Substring(colonIndex + 1).TrimStart()
           : string.Empty;

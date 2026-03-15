@@ -68,11 +68,108 @@ public enum DoorCapability
   Reset,
 
   /// <summary>
+  /// Door supports resetting all last-read pointers across all conferences.
+  /// </summary>
+  /// <remarks>
+  /// Typically indicated by "CONTROLTYPE = RESETALL" in DOOR.ID.
+  /// </remarks>
+  ResetAll,
+
+  /// <summary>
+  /// Door supports retrieving messages addressed to the current user only.
+  /// </summary>
+  /// <remarks>
+  /// Typically indicated by "CONTROLTYPE = YOURS" in DOOR.ID.
+  /// </remarks>
+  Yours,
+
+  /// <summary>
+  /// Door supports retrieving personal mail for the current user.
+  /// </summary>
+  /// <remarks>
+  /// Typically indicated by "CONTROLTYPE = MAIL" in DOOR.ID.
+  /// </remarks>
+  Mail,
+
+  /// <summary>
+  /// Door supports deleting personal mail for the current user.
+  /// </summary>
+  /// <remarks>
+  /// Typically indicated by "CONTROLTYPE = DELMAIL" in DOOR.ID.
+  /// </remarks>
+  DeleteMail,
+
+  /// <summary>
+  /// Door supports file attachments.
+  /// </summary>
+  /// <remarks>
+  /// Typically indicated by "CONTROLTYPE = ATTACH" in DOOR.ID.
+  /// </remarks>
+  Attach,
+
+  /// <summary>
+  /// Door supports marking messages as owned by the current user.
+  /// </summary>
+  /// <remarks>
+  /// Typically indicated by "CONTROLTYPE = OWN" in DOOR.ID.
+  /// </remarks>
+  Own,
+
+  /// <summary>
+  /// Door supports FidoNet-style file requests.
+  /// </summary>
+  /// <remarks>
+  /// Typically indicated by "CONTROLTYPE = FREQ" in DOOR.ID.
+  /// </remarks>
+  FileRequest,
+
+  /// <summary>
+  /// Door produces NDX (index) files alongside message packets.
+  /// </summary>
+  /// <remarks>
+  /// Typically indicated by "CONTROLTYPE = NDX" in DOOR.ID.
+  /// </remarks>
+  Index,
+
+  /// <summary>
+  /// Door supports time-zone information in message headers.
+  /// </summary>
+  /// <remarks>
+  /// Typically indicated by "CONTROLTYPE = TZ" in DOOR.ID.
+  /// </remarks>
+  TimeZone,
+
+  /// <summary>
+  /// Door supports VIA (routing path) information in message headers.
+  /// </summary>
+  /// <remarks>
+  /// Typically indicated by "CONTROLTYPE = VIA" in DOOR.ID.
+  /// </remarks>
+  Via,
+
+  /// <summary>
+  /// Door supports MSGID (unique message identifier) kludge lines.
+  /// </summary>
+  /// <remarks>
+  /// Typically indicated by "CONTROLTYPE = MSGID" in DOOR.ID.
+  /// </remarks>
+  MessageId,
+
+  /// <summary>
+  /// Door supports CONTROL kludge handling for extended message control lines.
+  /// </summary>
+  /// <remarks>
+  /// Typically indicated by "CONTROLTYPE = CONTROL" in DOOR.ID.
+  /// </remarks>
+  Control,
+
+  /// <summary>
   /// Unknown or custom capability.
   /// </summary>
   /// <remarks>
   /// Used for door-specific capabilities not covered by the standard set.
-  /// The raw entry is preserved in <see cref="DoorId.RawEntries"/>.
+  /// The raw entry is preserved in <see cref="DoorId.RawEntries"/> and
+  /// <see cref="DoorId.ControlTypes"/>.
   /// </remarks>
   Unknown
 }
