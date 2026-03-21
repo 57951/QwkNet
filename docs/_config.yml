@@ -3,10 +3,10 @@ title: QWK.NET
 description: QWK.NET library (QWK, REP, QWKE) for .NET applications
 theme: jekyll-theme-cayman
 baseurl: /QwkNet
-url: https://57951.github.io
+url: https://0xe25f.github.io
 
 # Repository information (required for local builds and GitHub links)
-repository: 57951/QwkNet
+repository: 0xe25f/QwkNet
 
 # Build settings
 markdown: kramdown

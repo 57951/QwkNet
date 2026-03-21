@@ -188,7 +188,7 @@ The `## Additional Files` section appears after `## Optional Files` when the pac
 
 ## Commands
 
-For available commands (`analyse`, `batch`, `view`, `roundtrip`) and their options, see the [tool README](https://github.com/57951/QwkNet/blob/main/tools/QwkNet.Diagnostics/README.md).
+For available commands (`analyse`, `batch`, `view`, `roundtrip`) and their options, see the [tool README](https://github.com/0xe25f/QwkNet/blob/main/tools/QwkNet.Diagnostics/README.md).
 
 ## Further Reading
 

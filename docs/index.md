@@ -30,7 +30,7 @@ QWK.NET serves developers and archivists working with historical BBS data:
 
 **[Getting Started Guide](getting-started.md)** - Step-by-step introduction to using QWK.NET
 
-**[GitHub Repository](https://github.com/57951/QwkNet)** - Source code, issues, and contributions
+**[GitHub Repository](https://github.com/0xe25f/QwkNet)** - Source code, issues, and contributions
 
 ## Documentation
 
@@ -42,4 +42,4 @@ QWK.NET serves developers and archivists working with historical BBS data:
 
 ## Licence
 
-MIT License - see [LICENSE](https://github.com/57951/QwkNet/blob/main/LICENSE) for details.
+MIT License - see [LICENSE](https://github.com/0xe25f/QwkNet/blob/main/LICENSE) for details.

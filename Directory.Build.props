@@ -12,8 +12,8 @@
     <Authors>Agent 57951</Authors>
     <Copyright>Copyright © 2025 Agent 57951</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://57951.github.io/QwkNet</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/57951/QwkNet</RepositoryUrl>
+    <PackageProjectUrl>https://0xe25f.github.io/QwkNet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/0xe25f/QwkNet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>qwk;qwke;rep;packet;bbs;offline-mail;fidonet;echomail;ftn;zone;node;point;retrocomputing;retro;archival</PackageTags>
     <PackageIcon>icon.png</PackageIcon>

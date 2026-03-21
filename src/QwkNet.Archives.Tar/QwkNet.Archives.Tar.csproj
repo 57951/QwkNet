@@ -6,12 +6,12 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <Authors>QWK.NET Contributors</Authors>
+    <Authors>Agent 57951</Authors>
     <Description>TAR archive format extension for QWK.NET - demonstrates third-party extension capabilities</Description>
-    <Copyright>Copyright © 2025 QWK.NET Contributors</Copyright>
+    <Copyright>Copyright © 2026 Agent 57951</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/57951/QwkNet</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/57951/QwkNet</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/0xe25f/QwkNet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/0xe25f/QwkNet</RepositoryUrl>
     <PackageTags>qwk;bbs;archive;tar;extension</PackageTags>
     <Version>1.0.0</Version>
     <IsPackable>false</IsPackable>

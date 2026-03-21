@@ -9,14 +9,14 @@
 
     <!-- Package Information -->
     <PackageId>QwkNet</PackageId>
-    <Version>1.6.0</Version>
+    <Version>1.6.1</Version>
     <Authors>Agent 57951</Authors>
     <Product>QWK.NET</Product>
     <Description>A modern, dependency-minimal .NET library for reading and writing QWK, REP, and QWKE offline mail packet formats.</Description>
     <Copyright>Copyright © 2026 Agent 57951</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/57951/QwkNet</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/57951/QwkNet</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/0xe25f/QwkNet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/0xe25f/QwkNet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>qwk;qwke;rep;bbs;offline-mail;fidonet;echomail;retrocomputing;retro;archival</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>

@@ -20,7 +20,7 @@ This package adds TAR archive format support to QWK.NET, demonstrating how third
 ### From Source
 
 ```bash
-git clone https://github.com/57951/QwkNet.git
+git clone https://github.com/0xe25f/QwkNet.git
 cd QwkNet/src/QwkNet.Archives.Tar
 dotnet build
 ```
