@@ -6,7 +6,7 @@ QWK.NET is a modern C# library for reading, writing, and validating QWK, REP, an
 
 - Full QWK, REP, and QWKE format support
 - Byte-accurate parsing and generation
-- CP437 (DOS) encoding support
+- CP437 (DOS) encoding support, plus arbitrary-encoding decode via `GetText(encoding)`
 - Built-in ZIP (1991+) archive handling
 - Multiple validation modes (Strict, Lenient, Salvage)
 - Zero external dependencies in core package

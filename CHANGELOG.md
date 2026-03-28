@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] - 2026-03-28
+
+### Added
+
+- **`MessageBody.RawBytes`** (`ReadOnlyMemory<byte>`) — exposes the concatenated 128-byte body blocks exactly as read from `MESSAGES.DAT`, before any CP437 decoding. Only populated on bodies produced by `QwkPacket.Open()`; empty on bodies created programmatically via `MessageBody.FromRawText()` or `MessageBuilder.SetBodyText()`.
+
+- **`MessageBody(lines, rawText, rawBytes)` constructor** — a new three-argument overload that accepts the raw body bytes alongside the existing CP437-decoded string fields. The existing two-argument constructor is unchanged and sets `RawBytes = ReadOnlyMemory<byte>.Empty`.
+
+- **`MessageBody.GetText(mode, encoding, fallback)` — raw-bytes path** — when `encoding` is non-null the method now operates on `RawBytes` instead of `RawText`. It splits on byte `0xE3` (or CR/CRLF for QWKE bodies) at the byte level, decodes each line with the specified encoding respecting the `DecoderFallbackPolicy`, and joins the result with the line separator implied by `mode`. Previously the `encoding` parameter was accepted but silently ignored; an `InvalidOperationException` is now thrown when `encoding` is non-null and `RawBytes` is empty. The null-encoding path is unchanged (backward compatible).
+
+- **`MessageBodyParser.ParseLines(ReadOnlySpan<byte>, Encoding, DecoderFallbackPolicy)` overload** — new public method used by the raw-bytes path of `GetText`. Can be called directly when byte-level access is needed without a full `MessageBody` object.
+
+### Changed
+
+- **`MessageBody.GetText` XML documentation** — the docs now clearly separate the two execution paths: (1) `encoding == null` → legacy CP437-decoded `RawText`-based path, identical to pre-v1.7.0 behaviour; (2) `encoding != null` → raw-bytes path requiring `RawBytes` to be non-empty.
+
+### Migration guide
+
+No breaking changes. To decode message bodies in an encoding other than CP437 (e.g. UTF-8):
+
+```csharp
+using QwkNet;
+using System.Text;
+
+using QwkPacket packet = QwkPacket.Open("DEMO1.QWK");
+foreach (Message message in packet.Messages)
+{
+    // Decode body as UTF-8 (works correctly if the BBS stored UTF-8 bodies)
+    string utf8Body = message.Body.GetText(
+        QwkNet.Encoding.LineEndingMode.Preserve,
+        Encoding.UTF8,
+        QwkNet.Encoding.DecoderFallbackPolicy.ReplacementUnicode);
+}
+```
+
+---
+
 ## [1.6.0] - 2026-03-15
 
 ### Added

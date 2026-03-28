@@ -205,6 +205,18 @@ foreach (Message message in packet.Messages)
     // Get encoded text with QWK line terminators (0xE3)
     string encodedText = body.GetEncodedText();
     
+    // Get text decoded with a specific encoding (v1.7.0+)
+    // This uses the raw bytes from the archive — only works for bodies
+    // loaded via QwkPacket.Open(), not programmatically created bodies.
+    string utf8Body = body.GetText(
+        QwkNet.Encoding.LineEndingMode.Preserve,
+        System.Text.Encoding.UTF8,
+        QwkNet.Encoding.DecoderFallbackPolicy.ReplacementUnicode);
+    
+    // GetText with null encoding uses the legacy CP437-decoded RawText path
+    // (backward compatible with pre-v1.7.0 callers; equivalent to ConvertFromQwkFormat)
+    string legacyText = body.GetText(QwkNet.Encoding.LineEndingMode.NormaliseToLf);
+    
     // Check message status flags
     if (message.IsPrivate)
     {

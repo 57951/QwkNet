@@ -553,6 +553,13 @@ public sealed class QwkPacket : IDisposable
           // Extract kludges from body lines (QWKE extended headers)
           List<MessageKludge> kludges = ExtractKludges(ref bodyLines);
           
+          // Concatenate raw body blocks to preserve original bytes for GetText(encoding)
+          byte[] rawBodyBytes = new byte[bodyBlocks.Count * BinaryRecordReader.RecordSize];
+          for (int bi = 0; bi < bodyBlocks.Count; bi++)
+          {
+            Array.Copy(bodyBlocks[bi], 0, rawBodyBytes, bi * BinaryRecordReader.RecordSize, BinaryRecordReader.RecordSize);
+          }
+
           // Reconstruct raw text from body blocks for MessageBody constructor
           StringBuilder rawTextBuilder = new StringBuilder();
           foreach (byte[] block in bodyBlocks)
@@ -561,7 +568,7 @@ public sealed class QwkPacket : IDisposable
           }
           string rawText = rawTextBuilder.ToString();
           
-          MessageBody body = new MessageBody(bodyLines, rawText);
+          MessageBody body = new MessageBody(bodyLines, rawText, rawBodyBytes);
 
           // Parse status from status byte
           MessageStatus status = ParseStatus(header.StatusByte);

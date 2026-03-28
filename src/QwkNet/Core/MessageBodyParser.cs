@@ -253,6 +253,206 @@ public static class MessageBodyParser
     return lines;
   }
 
+  /// <summary>
+  /// Parses message body bytes into individual text lines using the specified encoding.
+  /// </summary>
+  /// <param name="rawBytes">
+  /// The raw, undecoded body bytes (concatenated 128-byte blocks from MESSAGES.DAT).
+  /// </param>
+  /// <param name="encoding">
+  /// The character encoding used to decode each line's bytes.
+  /// </param>
+  /// <param name="fallback">
+  /// Decoder fallback policy for bytes that are invalid in <paramref name="encoding"/>.
+  /// Default is <see cref="DecoderFallbackPolicy.Strict"/>.
+  /// </param>
+  /// <returns>A list of decoded text lines.</returns>
+  /// <exception cref="ArgumentNullException">
+  /// Thrown when <paramref name="encoding"/> is <c>null</c>.
+  /// </exception>
+  /// <exception cref="DecoderFallbackException">
+  /// Thrown when <paramref name="fallback"/> is <see cref="DecoderFallbackPolicy.Strict"/>
+  /// and <paramref name="rawBytes"/> contains bytes that are not valid in
+  /// <paramref name="encoding"/>.
+  /// </exception>
+  /// <remarks>
+  /// <para>
+  /// Line splitting follows the same rules as <see cref="ParseLinesFromBuffer"/>:
+  /// classic QWK bodies are split on byte <c>0xE3</c>; QWKE bodies (detected by
+  /// <see cref="IsQwkeFormat"/>) are split on CR (<c>0x0D</c>) or CRLF.
+  /// Trailing space and null bytes are trimmed from each line before decoding.
+  /// </para>
+  /// <para>
+  /// This overload is the correct entry point when the body may use an encoding
+  /// other than CP437 (e.g. UTF-8): it operates on the original bytes rather than
+  /// on the already-CP437-decoded <c>RawText</c> string.
+  /// </para>
+  /// </remarks>
+  public static List<string> ParseLines(
+    ReadOnlySpan<byte> rawBytes,
+    System.Text.Encoding encoding,
+    DecoderFallbackPolicy fallback = DecoderFallbackPolicy.Strict)
+  {
+    if (encoding == null)
+    {
+      throw new ArgumentNullException(nameof(encoding));
+    }
+
+    System.Text.Encoding dec = ApplyDecoderPolicy(encoding, fallback);
+
+    if (IsQwkeFormat(rawBytes))
+    {
+      return ParseQwkeLinesWithEncoding(rawBytes, dec);
+    }
+
+    return ParseLinesFromBufferWithEncoding(rawBytes, dec);
+  }
+
+  /// <summary>
+  /// Clones <paramref name="baseEncoding"/> with a decoder fallback appropriate for
+  /// <paramref name="policy"/>.
+  /// </summary>
+  private static System.Text.Encoding ApplyDecoderPolicy(
+    System.Text.Encoding baseEncoding, DecoderFallbackPolicy policy)
+  {
+    switch (policy)
+    {
+      case DecoderFallbackPolicy.BestEffort:
+        return baseEncoding; // use as-is
+
+      case DecoderFallbackPolicy.Strict:
+      {
+        System.Text.Encoding clone = (System.Text.Encoding)baseEncoding.Clone();
+        clone.DecoderFallback = System.Text.DecoderFallback.ExceptionFallback;
+        return clone;
+      }
+
+      case DecoderFallbackPolicy.ReplacementQuestion:
+      {
+        System.Text.Encoding clone = (System.Text.Encoding)baseEncoding.Clone();
+        clone.DecoderFallback = new System.Text.DecoderReplacementFallback("?");
+        return clone;
+      }
+
+      case DecoderFallbackPolicy.ReplacementUnicode:
+      {
+        System.Text.Encoding clone = (System.Text.Encoding)baseEncoding.Clone();
+        clone.DecoderFallback = System.Text.DecoderFallback.ReplacementFallback;
+        return clone;
+      }
+
+      default:
+        throw new ArgumentException(
+          $"Unsupported decoder fallback policy: {policy}", nameof(policy));
+    }
+  }
+
+  /// <summary>
+  /// Byte-level classic-QWK line parser that decodes each line with <paramref name="encoding"/>.
+  /// Splits on 0xE3; trims trailing space/null bytes before decoding.
+  /// </summary>
+  private static List<string> ParseLinesFromBufferWithEncoding(
+    ReadOnlySpan<byte> buffer, System.Text.Encoding encoding)
+  {
+    List<string> lines = new List<string>();
+    int lineStart = 0;
+
+    for (int i = 0; i <= buffer.Length; i++)
+    {
+      bool isTerminator = i < buffer.Length && buffer[i] == LineTerminator;
+      bool isEnd = i == buffer.Length;
+
+      if (!isTerminator && !isEnd)
+      {
+        continue;
+      }
+
+      ReadOnlySpan<byte> rawLine = buffer.Slice(lineStart, i - lineStart);
+      rawLine = TrimTrailingPaddingBytes(rawLine);
+
+      if (isEnd)
+      {
+        // Final unterminated segment: only add if it has content
+        if (rawLine.Length > 0)
+        {
+          lines.Add(encoding.GetString(rawLine));
+        }
+      }
+      else
+      {
+        // Lines terminated by 0xE3 are always kept, even when empty
+        lines.Add(rawLine.Length == 0 ? string.Empty : encoding.GetString(rawLine));
+        lineStart = i + 1;
+      }
+    }
+
+    return lines;
+  }
+
+  /// <summary>
+  /// Byte-level QWKE line parser (CR/CRLF split) that decodes each line with
+  /// <paramref name="encoding"/>.
+  /// </summary>
+  private static List<string> ParseQwkeLinesWithEncoding(
+    ReadOnlySpan<byte> buffer, System.Text.Encoding encoding)
+  {
+    List<string> lines = new List<string>();
+    int lineStart = 0;
+
+    for (int i = 0; i < buffer.Length; i++)
+    {
+      if (buffer[i] == 0x0D)
+      {
+        ReadOnlySpan<byte> rawLine = buffer.Slice(lineStart, i - lineStart);
+        rawLine = TrimTrailingPaddingBytes(rawLine);
+        lines.Add(rawLine.Length == 0 ? string.Empty : encoding.GetString(rawLine));
+
+        // Skip following LF if present
+        if (i + 1 < buffer.Length && buffer[i + 1] == 0x0A)
+        {
+          i++;
+        }
+
+        lineStart = i + 1;
+      }
+      else if (buffer[i] == 0x0A)
+      {
+        ReadOnlySpan<byte> rawLine = buffer.Slice(lineStart, i - lineStart);
+        rawLine = TrimTrailingPaddingBytes(rawLine);
+        lines.Add(rawLine.Length == 0 ? string.Empty : encoding.GetString(rawLine));
+        lineStart = i + 1;
+      }
+    }
+
+    // Final unterminated segment
+    if (lineStart < buffer.Length)
+    {
+      ReadOnlySpan<byte> rawLine = buffer.Slice(lineStart);
+      rawLine = TrimTrailingPaddingBytes(rawLine);
+      if (rawLine.Length > 0)
+      {
+        lines.Add(encoding.GetString(rawLine));
+      }
+    }
+
+    return lines;
+  }
+
+  /// <summary>
+  /// Trims trailing space (0x20) and null (0x00) bytes from a byte span,
+  /// matching <see cref="ParseLinesFromBuffer"/> padding behaviour.
+  /// </summary>
+  private static ReadOnlySpan<byte> TrimTrailingPaddingBytes(ReadOnlySpan<byte> span)
+  {
+    int end = span.Length;
+    while (end > 0 && (span[end - 1] == 0x20 || span[end - 1] == 0x00))
+    {
+      end--;
+    }
+
+    return span.Slice(0, end);
+  }
+
   private static string BytesToString(List<byte> bytes)
   {
     if (bytes.Count == 0)
